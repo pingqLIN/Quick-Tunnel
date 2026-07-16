@@ -346,8 +346,30 @@ function Stop-ChildProcess {
     }
 }
 
+function Get-TunnelErrorSummary {
+    param([string[]]$LogPaths)
+
+    $diagnosticLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($logPath in $LogPaths) {
+        if ([string]::IsNullOrWhiteSpace($logPath) -or -not (Test-Path -LiteralPath $logPath)) {
+            continue
+        }
+
+        foreach ($line in (Get-Content -LiteralPath $logPath -Tail 30 -ErrorAction SilentlyContinue)) {
+            if ($line -match '(?i)\b(ERR|FTL|error|failed|failure|timeout|unable|denied|refused)\b') {
+                $redactedLine = $line -replace '(?i)(authorization|token|secret|password)(\s*[:=]\s*)\S+', '$1$2[REDACTED]'
+                $diagnosticLines.Add($redactedLine)
+            }
+        }
+    }
+
+    return @($diagnosticLines | Select-Object -Last 10)
+}
+
 $serverProcess = $null
 $tunnelProcess = $null
+$tunnelStdoutPath = $null
+$tunnelStderrPath = $null
 $temporaryRoot = $null
 $sharingStarted = $false
 $stoppedByTimeout = $false
@@ -549,6 +571,13 @@ try {
 catch {
     $exitCode = 1
     Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    $tunnelDiagnostics = @(Get-TunnelErrorSummary -LogPaths @($tunnelStdoutPath, $tunnelStderrPath))
+    if ($tunnelDiagnostics.Count -gt 0) {
+        Write-Host 'cloudflared diagnostic summary:' -ForegroundColor Yellow
+        foreach ($diagnosticLine in $tunnelDiagnostics) {
+            Write-Host "  $diagnosticLine" -ForegroundColor Yellow
+        }
+    }
 }
 finally {
     Stop-ChildProcess -Process $tunnelProcess
@@ -562,8 +591,15 @@ finally {
         Write-Host "Sharing stopped at $([DateTimeOffset]::Now.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz')). Temporary files were removed." -ForegroundColor Green
     }
 
-    if ($WaitForAcknowledgement -and $stoppedByTimeout) {
-        Read-Host 'Quick Tunnel has expired and is closed. Press ENTER to close this window' | Out-Null
+    if ($WaitForAcknowledgement -and ($stoppedByTimeout -or $exitCode -ne 0)) {
+        $acknowledgementPrompt = if ($exitCode -ne 0) {
+            'Startup failed. Review the error above, then press ENTER to close this window'
+        }
+        else {
+            'Quick Tunnel has expired and is closed. Press ENTER to close this window'
+        }
+        Write-Host $acknowledgementPrompt -ForegroundColor Yellow
+        Read-Host | Out-Null
     }
 }
 
