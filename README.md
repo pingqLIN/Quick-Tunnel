@@ -8,10 +8,23 @@ review. The source folder is never served directly.
 
 ## Requirements
 
-- Windows with PowerShell 7 (`pwsh.exe`)
+Windows:
+
+- PowerShell 7 (`pwsh.exe`)
 - Python 3
 - `cloudflared`
 - Optional: `qrencode` for a terminal QR code
+
+macOS:
+
+- macOS 14 or newer is the supported Homebrew path
+- Python 3.9 or newer
+- `cloudflared`
+- Built-in zsh and Automator
+- Optional: `qrencode` for a terminal QR code
+
+See the [macOS guide](macos/README.md) for Finder Quick Action installation,
+feature parity, and verification.
 
 ## Usage
 
@@ -29,7 +42,19 @@ opening a public tunnel:
 The default public lifetime is 30 minutes. Change it with
 `-DurationMinutes`, or press Enter to stop early.
 
-## Explorer context menu
+On macOS:
+
+~~~zsh
+python3 ./macos/share-codex-review.py "/path/to/MyProject"
+~~~
+
+Build and verify the filtered snapshot without opening a public tunnel:
+
+~~~zsh
+python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
+~~~
+
+## Windows Explorer context menu
 
 Double-click `context-menu-setup.cmd`, choose **Install**, and type `INSTALL`.
 The command is installed for the current Windows user only. On Windows 11 it
@@ -40,6 +65,18 @@ To remove it:
 ```powershell
 .\manage-context-menu.ps1 -Action Uninstall
 ```
+
+## macOS Finder Quick Action
+
+Install the per-user Finder Quick Action:
+
+~~~zsh
+/bin/zsh ./macos/manage-finder-quick-action.sh install
+~~~
+
+Select one folder in Finder, then choose **Quick Actions > Share to Codex
+Review**. Removal is recoverable: installed files are moved into sibling
+`.del` folders instead of being permanently erased.
 
 ## Safety model
 

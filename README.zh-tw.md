@@ -8,10 +8,23 @@ HTTP server 直接提供。
 
 ## 系統需求
 
-- Windows 與 PowerShell 7（`pwsh.exe`）
+Windows：
+
+- PowerShell 7（`pwsh.exe`）
 - Python 3
 - `cloudflared`
 - 選用：`qrencode`，用於在終端顯示 QR code
+
+macOS：
+
+- 使用 Homebrew 的正式支援環境為 macOS 14 以上
+- Python 3.9 以上
+- `cloudflared`
+- 系統內建的 zsh 與 Automator
+- 選用：`qrencode`，用於在終端顯示 QR code
+
+Finder Quick Action 安裝方式、功能對照與驗證說明請參閱
+[macOS 指南](macos/README.zh-tw.md)。
 
 ## 使用方式
 
@@ -27,7 +40,19 @@ HTTP server 直接提供。
 
 預設公開時效為 30 分鐘。可用 `-DurationMinutes` 調整，或按 Enter 提前停止。
 
-## 檔案總管右鍵選單
+macOS 使用方式：
+
+~~~zsh
+python3 ./macos/share-codex-review.py "/path/to/MyProject"
+~~~
+
+只建立並驗證過濾後的快照，不開啟公開 tunnel：
+
+~~~zsh
+python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
+~~~
+
+## Windows 檔案總管右鍵選單
 
 雙擊 `context-menu-setup.cmd`，選擇 **Install**，再輸入 `INSTALL`。選單只會
 安裝到目前 Windows 使用者。Windows 11 可能將它放在「顯示更多選項」。
@@ -37,6 +62,17 @@ HTTP server 直接提供。
 ```powershell
 .\manage-context-menu.ps1 -Action Uninstall
 ```
+
+## macOS Finder Quick Action
+
+安裝目前使用者專用的 Finder Quick Action：
+
+~~~zsh
+/bin/zsh ./macos/manage-finder-quick-action.sh install
+~~~
+
+在 Finder 選取一個資料夾，再選擇 **快速動作 > Share to Codex Review**。
+移除時不會永久刪除安裝檔案，而是移到同層的 `.del` 資料夾，保留復原空間。
 
 ## 安全模型
 
