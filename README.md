@@ -63,7 +63,9 @@ The Quick Tunnel is created only after local validation and explicit approval.
 The terminal displays the public URL, process IDs, verification result, and
 scheduled expiration time. When the lifetime expires, the tunnel is stopped
 and temporary files are removed. Context-menu launches keep the completion
-message visible until acknowledged.
+message visible until acknowledged. Transient Cloudflare-side `500/1101`
+Quick Tunnel creation failures are retried up to three times with exponential
+backoff; configuration errors and rate-limit responses are not retried.
 
 Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
 Anyone with the generated URL can access the filtered snapshot while the

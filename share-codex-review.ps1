@@ -31,6 +31,12 @@ param(
     [ValidateRange(1, 10240)]
     [int]$MaxFileSizeMB = 25,
 
+    [ValidateRange(1, 5)]
+    [int]$QuickTunnelAttempts = 3,
+
+    [ValidateRange(1, 60)]
+    [int]$QuickTunnelRetryBaseSeconds = 5,
+
     [string[]]$AdditionalExclude = @(),
 
     [switch]$Yes,
@@ -312,6 +318,28 @@ function Wait-ForQuickTunnelUrl {
     throw "Timed out waiting for the Cloudflare Quick Tunnel URL."
 }
 
+function Test-IsRetryableQuickTunnelFailure {
+    param([string[]]$LogPaths)
+
+    $logParts = [System.Collections.Generic.List[string]]::new()
+    foreach ($logPath in $LogPaths) {
+        if (Test-Path -LiteralPath $logPath) {
+            $logParts.Add((Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue))
+        }
+    }
+
+    $logContent = [string]::Join([Environment]::NewLine, $logParts)
+    $isServerFailure =
+        $logContent -match '(?i)status_code="5\d{2}' -or
+        $logContent -match '(?i)\b500 Internal Server Error\b' -or
+        $logContent -match '(?i)error code:\s*1101\b'
+    $isMalformedResponse =
+        $logContent -match '(?i)Error unmarshaling QuickTunnel response' -or
+        $logContent -match '(?i)failed to unmarshal quick Tunnel'
+
+    return $isServerFailure -and $isMalformedResponse
+}
+
 function Test-PublicReviewUrl {
     param([string]$Url)
 
@@ -357,7 +385,7 @@ function Get-TunnelErrorSummary {
 
         foreach ($line in (Get-Content -LiteralPath $logPath -Tail 30 -ErrorAction SilentlyContinue)) {
             if ($line -match '(?i)\b(ERR|FTL|error|failed|failure|timeout|unable|denied|refused)\b') {
-                $redactedLine = $line -replace '(?i)(authorization|token|secret|password)(\s*[:=]\s*)\S+', '$1$2[REDACTED]'
+                $redactedLine = $line -replace '(?i)(authorization|token|secret|password)(\s*[:=]\s*)(?:Bearer\s+)?\S+', '$1$2[REDACTED]'
                 $diagnosticLines.Add($redactedLine)
             }
         }
@@ -509,8 +537,6 @@ try {
 
     $isolatedConfigPath = Join-Path $temporaryRoot 'cloudflared-empty.yml'
     [System.IO.File]::WriteAllText($isolatedConfigPath, '{}', [System.Text.UTF8Encoding]::new($false))
-    $tunnelStdoutPath = Join-Path $temporaryRoot 'cloudflared.stdout.log'
-    $tunnelStderrPath = Join-Path $temporaryRoot 'cloudflared.stderr.log'
     $tunnelArguments = @(
         'tunnel',
         '--config', $isolatedConfigPath,
@@ -519,17 +545,45 @@ try {
         '--management-diagnostics=false',
         '--loglevel', 'info'
     )
-    $tunnelProcess = Start-Process `
-        -FilePath $cloudflaredCommand.Source `
-        -ArgumentList $tunnelArguments `
-        -PassThru `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $tunnelStdoutPath `
-        -RedirectStandardError $tunnelStderrPath
+    $publicBaseUrl = $null
+    for ($tunnelAttempt = 1; $tunnelAttempt -le $QuickTunnelAttempts; $tunnelAttempt++) {
+        $tunnelStdoutPath = Join-Path $temporaryRoot "cloudflared-attempt-$tunnelAttempt.stdout.log"
+        $tunnelStderrPath = Join-Path $temporaryRoot "cloudflared-attempt-$tunnelAttempt.stderr.log"
+        $tunnelProcess = Start-Process `
+            -FilePath $cloudflaredCommand.Source `
+            -ArgumentList $tunnelArguments `
+            -PassThru `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $tunnelStdoutPath `
+            -RedirectStandardError $tunnelStderrPath
 
-    $publicBaseUrl = Wait-ForQuickTunnelUrl `
-        -Process $tunnelProcess `
-        -LogPaths @($tunnelStdoutPath, $tunnelStderrPath)
+        try {
+            $publicBaseUrl = Wait-ForQuickTunnelUrl `
+                -Process $tunnelProcess `
+                -LogPaths @($tunnelStdoutPath, $tunnelStderrPath)
+            break
+        }
+        catch {
+            $startupError = $_
+            Stop-ChildProcess -Process $tunnelProcess
+            $retryable = Test-IsRetryableQuickTunnelFailure -LogPaths @($tunnelStdoutPath, $tunnelStderrPath)
+            if (-not $retryable -or $tunnelAttempt -eq $QuickTunnelAttempts) {
+                throw $startupError
+            }
+
+            $retryDelaySeconds = [Math]::Min(
+                $QuickTunnelRetryBaseSeconds * [Math]::Pow(2, $tunnelAttempt - 1),
+                60
+            )
+            Write-Warning "Cloudflare Quick Tunnel returned a transient 500/1101 response. Retrying attempt $($tunnelAttempt + 1) of $QuickTunnelAttempts in $retryDelaySeconds second(s)."
+            Start-Sleep -Seconds $retryDelaySeconds
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($publicBaseUrl)) {
+        throw 'Cloudflare Quick Tunnel did not publish a URL.'
+    }
+
     $publicReviewUrl = "$publicBaseUrl/$indexFileName"
     $sharingStarted = $true
 
