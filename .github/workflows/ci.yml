@@ -1,0 +1,89 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.9"
+      - name: PowerShell syntax
+        shell: pwsh
+        run: |
+          $files = @(
+            'share-codex-review.ps1',
+            'manage-context-menu.ps1',
+            'windows/tests/test-share-codex-review.ps1'
+          )
+          foreach ($file in $files) {
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $file),
+              [ref]$null,
+              [ref]$errors
+            )
+            if ($errors.Count -gt 0) {
+              $errors | Format-List
+              throw "PowerShell syntax failed: $file"
+            }
+          }
+      - name: Windows regression tests
+        shell: pwsh
+        run: ./windows/tests/test-share-codex-review.ps1
+      - name: Shared safe-server tests
+        run: python -m unittest discover -s tests -v
+      - name: Python syntax
+        run: >-
+          python -m py_compile
+          safe-review-server.py
+          macos/share-codex-review.py
+          macos/tests/test_share_codex_review.py
+          tests/test_safe_review_server.py
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.9"
+      - name: Python regression tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m unittest discover -s macos/tests -v
+          python -m unittest discover -s tests -v
+      - name: zsh syntax
+        run: |
+          zsh -n macos/share-codex-review.command
+          zsh -n macos/launch-from-finder.sh
+          zsh -n macos/manage-finder-quick-action.sh
+          zsh -n macos/finder-quick-action-setup.command
+          zsh -n macos/tests/run-repeatability-tests.zsh
+      - name: Automator property lists
+        run: |
+          plutil -lint "macos/templates/Share to Codex Review.workflow/Contents/Info.plist"
+          plutil -lint "macos/templates/Share to Codex Review.workflow/Contents/document.wflow"
+
+  python-3-14:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+      - name: Current Python regression tests
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m unittest discover -s macos/tests -v
+          python -m unittest discover -s tests -v

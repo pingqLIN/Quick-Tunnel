@@ -10,9 +10,10 @@ print "Quick Tunnel Review Share - Finder Quick Action"
 print "  1. Install"
 print "  2. Remove"
 print "  3. Show status"
-print "  4. Cancel"
+print "  4. Run doctor"
+print "  5. Cancel"
 print
-read "choice?Select [1-4]: "
+read "choice?Select [1-5]: "
 
 case "$choice" in
     1)
@@ -25,6 +26,10 @@ case "$choice" in
         ;;
     3)
         /bin/zsh "$manager" status
+        result=$?
+        ;;
+    4)
+        /bin/zsh "$manager" doctor
         result=$?
         ;;
     *)

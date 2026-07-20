@@ -1,4 +1,4 @@
-"""Read-only HTTP server that renders review source files as inert content."""
+"""Loopback-only HTTP server that renders staged review files as inert content."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ TEXT_EXTENSIONS = {
     ".c",
     ".cc",
     ".cjs",
+    ".cmd",
     ".conf",
     ".config",
     ".cpp",
@@ -107,7 +108,12 @@ class SafeReviewRequestHandler(SimpleHTTPRequestHandler):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bind", default="127.0.0.1")
+    parser.add_argument(
+        "--bind",
+        choices=("127.0.0.1",),
+        default="127.0.0.1",
+        help="loopback address (non-loopback exposure is intentionally rejected)",
+    )
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--index-name", required=True)

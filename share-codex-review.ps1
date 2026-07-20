@@ -45,7 +45,9 @@ param(
 
     [switch]$ValidateOnly,
 
-    [switch]$WaitForAcknowledgement
+    [switch]$WaitForAcknowledgement,
+
+    [switch]$Json
 )
 
 Set-StrictMode -Version Latest
@@ -75,7 +77,7 @@ $textFileExtensions = @(
     '.ts', '.tsx', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini',
     '.config', '.conf', '.md', '.txt', '.html', '.htm', '.css', '.scss',
     '.xml', '.cs', '.fs', '.vb', '.go', '.rs', '.java', '.kt', '.rb',
-    '.php', '.sh', '.bash', '.zsh', '.bat', '.cmd', '.sql', '.graphql'
+    '.php', '.sh', '.bash', '.zsh', '.bat', '.cmd', '.sql', '.graphql', '.log'
 )
 
 $secretPatterns = @(
@@ -167,15 +169,80 @@ function Get-ShareInventory {
                 SourcePath   = $file.FullName
                 RelativePath = $relativePath
                 Length       = $file.Length
+                ContentHash  = Get-FileSha256 -Path $file.FullName -RelativePath $relativePath
             })
         }
     }
 
+    $sortedFiles = @(
+        $files | Sort-Object `
+            @{ Expression = { $_.RelativePath.ToUpperInvariant() } }, `
+            @{ Expression = { $_.RelativePath } }
+    )
+
     return [pscustomobject]@{
-        Files         = $files
+        Files         = $sortedFiles
         ExcludedCount = $excludedCount
         OversizeCount = $oversizeCount
     }
+}
+
+function Get-FileSha256 {
+    param(
+        [string]$Path,
+        [string]$RelativePath
+    )
+
+    try {
+        $stream = [System.IO.FileStream]::new(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read
+        )
+        try {
+            $sha256 = [System.Security.Cryptography.SHA256]::Create()
+            try {
+                $hashBytes = $sha256.ComputeHash($stream)
+            }
+            finally {
+                $sha256.Dispose()
+            }
+        }
+        finally {
+            $stream.Dispose()
+        }
+    }
+    catch {
+        throw "Unable to inspect share candidate '$RelativePath'. Nothing was shared: $($_.Exception.Message)"
+    }
+
+    return -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
+}
+
+function Get-ScannableTextContent {
+    param([object]$File)
+
+    try {
+        $bytes = [System.IO.File]::ReadAllBytes($File.SourcePath)
+    }
+    catch {
+        throw "Unable to secret-scan '$($File.RelativePath)'. Nothing was shared: $($_.Exception.Message)"
+    }
+
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes, 2, $bytes.Length - 2)
+    }
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        return [System.Text.Encoding]::BigEndianUnicode.GetString($bytes, 2, $bytes.Length - 2)
+    }
+    if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        return [System.Text.Encoding]::UTF8.GetString($bytes, 3, $bytes.Length - 3)
+    }
+
+    # UTF-8 replacement decoding keeps the scan available for mixed or malformed
+    # text while preserving ASCII secret markers. Read failures remain fail-closed.
+    return [System.Text.Encoding]::UTF8.GetString($bytes)
 }
 
 function Test-ContainsPotentialSecret {
@@ -186,7 +253,7 @@ function Test-ContainsPotentialSecret {
         return $false
     }
 
-    $content = [System.IO.File]::ReadAllText($File.SourcePath)
+    $content = Get-ScannableTextContent -File $File
     foreach ($pattern in $secretPatterns) {
         if ([regex]::IsMatch($content, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
             return $true
@@ -194,6 +261,221 @@ function Test-ContainsPotentialSecret {
     }
 
     return $false
+}
+
+function Copy-InventoryEntry {
+    param(
+        [object]$File,
+        [string]$RootPath,
+        [string]$DestinationPath
+    )
+
+    $rootItem = Get-Item -LiteralPath $RootPath -Force
+    if (Test-IsReparsePoint -Item $rootItem) {
+        throw 'The selected folder cannot be a reparse point.'
+    }
+
+    $rootFullPath = [System.IO.Path]::GetFullPath($RootPath).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    )
+    $sourceFullPath = [System.IO.Path]::GetFullPath($File.SourcePath)
+    $rootPrefix = $rootFullPath + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $sourceFullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Source path escaped the selected folder during staging: $($File.RelativePath)"
+    }
+
+    $pathParts = @($File.RelativePath -split '/')
+    $currentDirectory = $rootFullPath
+    for ($partIndex = 0; $partIndex -lt $pathParts.Count - 1; $partIndex++) {
+        $currentDirectory = Join-Path $currentDirectory $pathParts[$partIndex]
+        $directoryItem = Get-Item -LiteralPath $currentDirectory -Force
+        if (
+            -not ($directoryItem -is [System.IO.DirectoryInfo]) -or
+            (Test-IsReparsePoint -Item $directoryItem)
+        ) {
+            throw "Source path crossed a reparse point during staging: $($File.RelativePath)"
+        }
+    }
+
+    $sourceItem = Get-Item -LiteralPath $sourceFullPath -Force
+    if ((Test-IsReparsePoint -Item $sourceItem) -or -not ($sourceItem -is [System.IO.FileInfo])) {
+        throw "Source path is no longer a regular file during staging: $($File.RelativePath)"
+    }
+    if ($sourceItem.Length -ne $File.Length) {
+        throw "Source file changed during staging: $($File.RelativePath)"
+    }
+
+    $sourceStream = $null
+    $destinationStream = $null
+    try {
+        $sourceStream = [System.IO.FileStream]::new(
+            $sourceFullPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read
+        )
+        if ($sourceStream.Length -ne $File.Length) {
+            throw "Source file changed during staging: $($File.RelativePath)"
+        }
+
+        $destinationStream = [System.IO.FileStream]::new(
+            $DestinationPath,
+            [System.IO.FileMode]::CreateNew,
+            [System.IO.FileAccess]::Write,
+            [System.IO.FileShare]::None
+        )
+        $sourceStream.CopyTo($destinationStream)
+        $destinationStream.Flush($true)
+        if ($destinationStream.Length -ne $File.Length) {
+            throw "Staged file length mismatch: $($File.RelativePath)"
+        }
+    }
+    finally {
+        if ($null -ne $destinationStream) {
+            $destinationStream.Dispose()
+        }
+        if ($null -ne $sourceStream) {
+            $sourceStream.Dispose()
+        }
+    }
+
+    $stagedHash = Get-FileSha256 -Path $DestinationPath -RelativePath $File.RelativePath
+    if ($stagedHash -cne $File.ContentHash) {
+        Remove-Item -LiteralPath $DestinationPath -Force -ErrorAction SilentlyContinue
+        throw "Source file changed during staging: $($File.RelativePath)"
+    }
+}
+
+function Write-HumanOutput {
+    param(
+        [string]$Message,
+        [System.ConsoleColor]$ForegroundColor
+    )
+
+    if ($Json) {
+        return
+    }
+    if ($PSBoundParameters.ContainsKey('ForegroundColor')) {
+        Write-Host $Message -ForegroundColor $ForegroundColor
+    }
+    else {
+        Write-Host $Message
+    }
+}
+
+function Write-HumanWarning {
+    param([string]$Message)
+
+    if (-not $Json) {
+        Write-Warning $Message
+    }
+}
+
+function Write-ReviewEvent {
+    param(
+        [string]$Event,
+        [ValidateSet('validate_only', 'public')]
+        [string]$Mode,
+        [AllowNull()]
+        [object]$PublicUrl,
+        [AllowNull()]
+        [object]$ExpiresAt,
+        [AllowNull()]
+        [Nullable[int]]$ServerPid,
+        [AllowNull()]
+        [Nullable[int]]$TunnelPid,
+        [AllowNull()]
+        [object]$StagingRoot,
+        [AllowNull()]
+        [object]$ErrorMessage
+    )
+
+    if (-not $Json) {
+        return
+    }
+
+    [ordered]@{
+        schema_version = 1
+        event          = $Event
+        mode           = $Mode
+        public_url     = $PublicUrl
+        expires_at     = $ExpiresAt
+        server_pid     = $ServerPid
+        tunnel_pid     = $TunnelPid
+        staging_root   = $StagingRoot
+        error          = $ErrorMessage
+    } | ConvertTo-Json -Compress | Write-Output
+}
+
+function Get-RedactedMachineError {
+    param(
+        [string]$Message,
+        [AllowNull()]
+        [object[]]$SensitivePaths = @()
+    )
+
+    $redacted = $Message -replace '(?i)(authorization|token|secret|password)(\s*[:=]\s*)(?:Bearer\s+)?\S+', '$1$2[REDACTED]'
+    $pathStrings = [System.Collections.Generic.HashSet[string]]::new(
+        [System.StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($path in $SensitivePaths) {
+        if ($null -eq $path -or [string]::IsNullOrWhiteSpace([string]$path)) {
+            continue
+        }
+        [void]$pathStrings.Add([string]$path)
+        try {
+            [void]$pathStrings.Add([System.IO.Path]::GetFullPath([string]$path))
+        }
+        catch {
+            # Keep the original spelling when the input is not a valid path.
+        }
+    }
+    foreach ($pathString in @($pathStrings | Sort-Object Length -Descending)) {
+        $redacted = [regex]::Replace(
+            $redacted,
+            [regex]::Escape($pathString),
+            '[PATH]',
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+        )
+    }
+    return $redacted
+}
+
+function Wait-ForReviewStop {
+    param(
+        [TimeSpan]$Duration,
+        [switch]$IgnoreStandardInput
+    )
+
+    $delayTask = [System.Threading.Tasks.Task]::Delay($Duration)
+    if ($IgnoreStandardInput) {
+        $delayTask.GetAwaiter().GetResult()
+        return $true
+    }
+
+    $readLineTask = [Console]::In.ReadLineAsync()
+    $completedTask = [System.Threading.Tasks.Task]::WhenAny(
+        $readLineTask,
+        $delayTask
+    ).GetAwaiter().GetResult()
+    return [object]::ReferenceEquals($completedTask, $delayTask)
+}
+
+function Remove-TemporaryRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $Path) {
+        throw "Temporary staging directory still exists after cleanup: $Path"
+    }
 }
 
 function ConvertTo-UrlPath {
@@ -398,12 +680,23 @@ $serverProcess = $null
 $tunnelProcess = $null
 $tunnelStdoutPath = $null
 $tunnelStderrPath = $null
-$temporaryRoot = $null
-$sharingStarted = $false
-$stoppedByTimeout = $false
-$exitCode = 0
+function Invoke-QuickTunnelReview {
+    $temporaryRoot = $null
+    $sharingStarted = $false
+    $stoppedByTimeout = $false
+    $exitCode = 0
+    $publicReviewUrl = $null
+    $stopTime = $null
+    $resolvedPath = $null
 
 try {
+    if ($Json -and $WaitForAcknowledgement) {
+        throw '-Json cannot be combined with -WaitForAcknowledgement.'
+    }
+    if ($Json -and -not $ValidateOnly -and -not $Yes) {
+        throw '-Json public mode requires -Yes so stdout remains non-interactive NDJSON.'
+    }
+
     if (-not (Test-Path -LiteralPath $FolderPath -PathType Container)) {
         throw "Folder not found: $FolderPath"
     }
@@ -418,28 +711,20 @@ try {
     if ($null -eq $pythonCommand) {
         throw 'Python 3 was not found. Install Python 3 or add python/py to PATH.'
     }
+    $pythonVersionCheck = & $pythonCommand.Source @pythonPrefixArguments -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 9) else 1)' 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python 3.9 or newer is required. Interpreter check failed: $pythonVersionCheck"
+    }
 
     $safeServerPath = Join-Path $PSScriptRoot 'safe-review-server.py'
     if (-not (Test-Path -LiteralPath $safeServerPath -PathType Leaf)) {
         throw "Safe review server not found: $safeServerPath"
     }
 
-    Write-Host "Preparing filtered snapshot: $resolvedPath" -ForegroundColor Cyan
+    Write-HumanOutput "Preparing filtered snapshot: $resolvedPath" -ForegroundColor Cyan
     $inventory = Get-ShareInventory -RootPath $resolvedPath -MaximumFileBytes ($MaxFileSizeMB * 1MB)
     if ($inventory.Files.Count -eq 0) {
         throw 'No shareable files remain after exclusions.'
-    }
-
-    $potentialSecretPaths = [System.Collections.Generic.List[string]]::new()
-    foreach ($file in $inventory.Files) {
-        if (Test-ContainsPotentialSecret -File $file) {
-            $potentialSecretPaths.Add($file.RelativePath)
-        }
-    }
-
-    if ($potentialSecretPaths.Count -gt 0) {
-        $pathList = ($potentialSecretPaths | Sort-Object | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
-        throw "Potential secret material was detected. Nothing was shared. Exclude or sanitize these files and retry:$([Environment]::NewLine)$pathList"
     }
 
     $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("share-codex-review-{0}" -f [guid]::NewGuid().ToString('N'))
@@ -463,18 +748,41 @@ try {
     } while ($sourceRelativePaths.Contains($indexFileName))
 
     $sharedFiles = [System.Collections.Generic.List[object]]::new()
+    $stagedFiles = [System.Collections.Generic.List[object]]::new()
     foreach ($file in $inventory.Files) {
         $sharedRelativePath = $file.RelativePath
         $nativeRelativePath = $sharedRelativePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
         $destinationPath = Join-Path $shareRoot $nativeRelativePath
         $destinationDirectory = Split-Path -Parent $destinationPath
         New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
-        Copy-Item -LiteralPath $file.SourcePath -Destination $destinationPath
+        Copy-InventoryEntry `
+            -File $file `
+            -RootPath $resolvedPath `
+            -DestinationPath $destinationPath
+        $stagedFiles.Add([pscustomobject]@{
+            SourcePath   = $destinationPath
+            RelativePath = $file.RelativePath
+            Length       = $file.Length
+        })
         $sharedFiles.Add([pscustomobject]@{
             OriginalRelativePath = $file.RelativePath
             SharedRelativePath   = $sharedRelativePath
             Length               = $file.Length
         })
+    }
+
+    # Scan only the hash-verified staged bytes. Scanning the live source before
+    # copying would leave a hash/scan/copy time-of-check-to-time-of-use gap.
+    $potentialSecretPaths = [System.Collections.Generic.List[string]]::new()
+    foreach ($file in $stagedFiles) {
+        if (Test-ContainsPotentialSecret -File $file) {
+            $potentialSecretPaths.Add($file.RelativePath)
+        }
+    }
+
+    if ($potentialSecretPaths.Count -gt 0) {
+        $pathList = ($potentialSecretPaths | Sort-Object | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
+        throw "Potential secret material was detected. Nothing was shared. Exclude or sanitize these files and retry:$([Environment]::NewLine)$pathList"
     }
 
     $indexPath = Join-Path $shareRoot $indexFileName
@@ -485,7 +793,7 @@ try {
         -ExcludedCount $inventory.ExcludedCount `
         -OversizeCount $inventory.OversizeCount
 
-    Write-Host "Snapshot ready: $($sharedFiles.Count) files; $($inventory.ExcludedCount) excluded; $($inventory.OversizeCount) oversized." -ForegroundColor Green
+    Write-HumanOutput "Snapshot ready: $($sharedFiles.Count) files; $($inventory.ExcludedCount) excluded; $($inventory.OversizeCount) oversized." -ForegroundColor Green
     if ($Port -eq 0) {
         $Port = Get-AvailableLoopbackPort
     }
@@ -510,22 +818,31 @@ try {
         -RedirectStandardError $serverStderrPath
 
     Wait-ForLocalServer -Process $serverProcess -Url $localReviewUrl
-    Write-Host "Local read-only server verified: $localReviewUrl (PID $($serverProcess.Id))" -ForegroundColor Green
+    Write-HumanOutput "Local read-only server verified: $localReviewUrl (PID $($serverProcess.Id))" -ForegroundColor Green
 
     if ($ValidateOnly) {
-        Write-Host 'Validation complete. No public tunnel was opened.' -ForegroundColor Green
+        Write-HumanOutput 'Validation complete. No public tunnel was opened.' -ForegroundColor Green
+        Write-ReviewEvent `
+            -Event 'validated' `
+            -Mode 'validate_only' `
+            -PublicUrl $null `
+            -ExpiresAt $null `
+            -ServerPid $serverProcess.Id `
+            -TunnelPid $null `
+            -StagingRoot $temporaryRoot `
+            -ErrorMessage $null
         return
     }
 
-    Write-Host ''
-    Write-Host 'PUBLIC SHARING WARNING' -ForegroundColor Yellow
-    Write-Host 'Anyone with the generated URL can access the filtered snapshot until this process stops.' -ForegroundColor Yellow
-    Write-Host 'The URL is not protected by a password or Cloudflare Access.' -ForegroundColor Yellow
+    Write-HumanOutput ''
+    Write-HumanOutput 'PUBLIC SHARING WARNING' -ForegroundColor Yellow
+    Write-HumanOutput 'Anyone with the generated URL can access the filtered snapshot until this process stops.' -ForegroundColor Yellow
+    Write-HumanOutput 'The URL is not protected by a password or Cloudflare Access.' -ForegroundColor Yellow
 
     if (-not $Yes) {
         $approval = Read-Host 'Type SHARE to open the public tunnel (anything else cancels)'
         if ($approval -cne 'SHARE') {
-            Write-Host 'Sharing cancelled. No public tunnel was opened.' -ForegroundColor Yellow
+            Write-HumanOutput 'Sharing cancelled. No public tunnel was opened.' -ForegroundColor Yellow
             return
         }
     }
@@ -575,7 +892,7 @@ try {
                 $QuickTunnelRetryBaseSeconds * [Math]::Pow(2, $tunnelAttempt - 1),
                 60
             )
-            Write-Warning "Cloudflare Quick Tunnel returned a transient 500/1101 response. Retrying attempt $($tunnelAttempt + 1) of $QuickTunnelAttempts in $retryDelaySeconds second(s)."
+            Write-HumanWarning "Cloudflare Quick Tunnel returned a transient 500/1101 response. Retrying attempt $($tunnelAttempt + 1) of $QuickTunnelAttempts in $retryDelaySeconds second(s)."
             Start-Sleep -Seconds $retryDelaySeconds
         }
     }
@@ -588,75 +905,143 @@ try {
     $sharingStarted = $true
 
     $publicContentType = Test-PublicReviewUrl -Url $publicReviewUrl
-    Write-Host ''
-    Write-Host 'Share URL:' -ForegroundColor Cyan
-    Write-Host $publicReviewUrl -ForegroundColor Green
+    Write-HumanOutput ''
+    Write-HumanOutput 'Share URL:' -ForegroundColor Cyan
+    Write-HumanOutput $publicReviewUrl -ForegroundColor Green
     if ($null -ne $publicContentType) {
-        Write-Host "Public verification: HTTP 200, $publicContentType" -ForegroundColor Green
+        Write-HumanOutput "Public verification: HTTP 200, $publicContentType" -ForegroundColor Green
     }
     else {
-        Write-Warning 'The tunnel URL was created, but public HTTP verification did not succeed yet.'
+        Write-HumanWarning 'The tunnel URL was created, but public HTTP verification did not succeed yet.'
     }
-    Write-Host "Server PID: $($serverProcess.Id) | Tunnel PID: $($tunnelProcess.Id)"
+    Write-HumanOutput "Server PID: $($serverProcess.Id) | Tunnel PID: $($tunnelProcess.Id)"
 
-    if (-not $NoQrCode) {
+    if (-not $NoQrCode -and -not $Json) {
         $qrEncodeCommand = Get-Command qrencode -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($null -ne $qrEncodeCommand) {
-            Write-Host ''
+            Write-HumanOutput ''
             & $qrEncodeCommand.Source -t ANSIUTF8 $publicReviewUrl
         }
         else {
-            Write-Host 'QR code: qrencode is not installed; use the URL above.' -ForegroundColor DarkGray
+            Write-HumanOutput 'QR code: qrencode is not installed; use the URL above.' -ForegroundColor DarkGray
         }
     }
 
     $stopTime = [DateTimeOffset]::Now.AddMinutes($DurationMinutes)
-    Write-Host ''
-    Write-Host "Quick Tunnel lifetime: $DurationMinutes minute(s)."
-    Write-Host "Press ENTER to stop early. Automatic stop: $($stopTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz'))"
-    $readLineTask = [Console]::In.ReadLineAsync()
-    $delayTask = [System.Threading.Tasks.Task]::Delay([TimeSpan]::FromMinutes($DurationMinutes))
-    $completedTask = [System.Threading.Tasks.Task]::WhenAny($readLineTask, $delayTask).GetAwaiter().GetResult()
-    if ([object]::ReferenceEquals($completedTask, $delayTask)) {
+    Write-HumanOutput ''
+    Write-HumanOutput "Quick Tunnel lifetime: $DurationMinutes minute(s)."
+    Write-HumanOutput "Press ENTER to stop early. Automatic stop: $($stopTime.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz'))"
+    Write-ReviewEvent `
+        -Event 'public_ready' `
+        -Mode 'public' `
+        -PublicUrl $publicReviewUrl `
+        -ExpiresAt $stopTime.ToUniversalTime().ToString('o') `
+        -ServerPid $serverProcess.Id `
+        -TunnelPid $tunnelProcess.Id `
+        -StagingRoot $temporaryRoot `
+        -ErrorMessage $null
+    $stoppedByTimeout = Wait-ForReviewStop `
+        -Duration ([TimeSpan]::FromMinutes($DurationMinutes)) `
+        -IgnoreStandardInput:$Json
+    if ($stoppedByTimeout) {
         $stoppedByTimeout = $true
-        Write-Host 'Quick Tunnel lifetime expired. Stopping public sharing now.' -ForegroundColor Yellow
+        Write-HumanOutput 'Quick Tunnel lifetime expired. Stopping public sharing now.' -ForegroundColor Yellow
     }
 }
 catch {
     $exitCode = 1
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-HumanOutput "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    $machineError = Get-RedactedMachineError `
+        -Message $_.Exception.Message `
+        -SensitivePaths @($FolderPath, $resolvedPath, $temporaryRoot)
+    Write-ReviewEvent `
+        -Event 'error' `
+        -Mode $(if ($ValidateOnly) { 'validate_only' } else { 'public' }) `
+        -PublicUrl $publicReviewUrl `
+        -ExpiresAt $(if ($null -ne $stopTime) { $stopTime.ToUniversalTime().ToString('o') } else { $null }) `
+        -ServerPid $(if ($null -ne $serverProcess) { $serverProcess.Id } else { $null }) `
+        -TunnelPid $(if ($null -ne $tunnelProcess) { $tunnelProcess.Id } else { $null }) `
+        -StagingRoot $temporaryRoot `
+        -ErrorMessage $machineError
     $tunnelDiagnostics = @(Get-TunnelErrorSummary -LogPaths @($tunnelStdoutPath, $tunnelStderrPath))
     if ($tunnelDiagnostics.Count -gt 0) {
-        Write-Host 'cloudflared diagnostic summary:' -ForegroundColor Yellow
+        Write-HumanOutput 'cloudflared diagnostic summary:' -ForegroundColor Yellow
         foreach ($diagnosticLine in $tunnelDiagnostics) {
-            Write-Host "  $diagnosticLine" -ForegroundColor Yellow
+            Write-HumanOutput "  $diagnosticLine" -ForegroundColor Yellow
         }
     }
 }
 finally {
+    $cleanupRoot = $temporaryRoot
+    $cleanupError = $null
     Stop-ChildProcess -Process $tunnelProcess
     Stop-ChildProcess -Process $serverProcess
 
     if ($null -ne $temporaryRoot -and (Test-Path -LiteralPath $temporaryRoot)) {
-        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force -ErrorAction SilentlyContinue
+        try {
+            Remove-TemporaryRoot -Path $temporaryRoot
+        }
+        catch {
+            $exitCode = 1
+            $cleanupError = $_.Exception
+            $machineCleanupError = Get-RedactedMachineError `
+                -Message "Temporary-file cleanup failed: $($cleanupError.Message)" `
+                -SensitivePaths @($FolderPath, $resolvedPath, $temporaryRoot)
+            Write-HumanOutput "ERROR: $machineCleanupError" -ForegroundColor Red
+            Write-ReviewEvent `
+                -Event 'error' `
+                -Mode $(if ($ValidateOnly) { 'validate_only' } else { 'public' }) `
+                -PublicUrl $publicReviewUrl `
+                -ExpiresAt $(if ($null -ne $stopTime) { $stopTime.ToUniversalTime().ToString('o') } else { $null }) `
+                -ServerPid $(if ($null -ne $serverProcess) { $serverProcess.Id } else { $null }) `
+                -TunnelPid $(if ($null -ne $tunnelProcess) { $tunnelProcess.Id } else { $null }) `
+                -StagingRoot $temporaryRoot `
+                -ErrorMessage $machineCleanupError
+        }
     }
 
     if ($sharingStarted) {
-        Write-Host "Sharing stopped at $([DateTimeOffset]::Now.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz')). Temporary files were removed." -ForegroundColor Green
+        if ($null -eq $cleanupError) {
+            Write-HumanOutput "Sharing stopped at $([DateTimeOffset]::Now.ToLocalTime().ToString('yyyy-MM-dd HH:mm:ss zzz')). Temporary files were removed." -ForegroundColor Green
+        }
+        else {
+            Write-HumanOutput "Sharing stopped, but temporary-file cleanup failed. Review the error above." -ForegroundColor Red
+        }
     }
 
-    if ($WaitForAcknowledgement -and ($stoppedByTimeout -or $exitCode -ne 0)) {
+    if ($null -ne $cleanupRoot -and $null -eq $cleanupError) {
+        Write-ReviewEvent `
+            -Event 'cleanup' `
+            -Mode $(if ($ValidateOnly) { 'validate_only' } else { 'public' }) `
+            -PublicUrl $publicReviewUrl `
+            -ExpiresAt $(if ($null -ne $stopTime) { $stopTime.ToUniversalTime().ToString('o') } else { $null }) `
+            -ServerPid $(if ($null -ne $serverProcess) { $serverProcess.Id } else { $null }) `
+            -TunnelPid $(if ($null -ne $tunnelProcess) { $tunnelProcess.Id } else { $null }) `
+            -StagingRoot $cleanupRoot `
+            -ErrorMessage $null
+    }
+
+    if (-not $Json -and $WaitForAcknowledgement -and ($stoppedByTimeout -or $exitCode -ne 0)) {
         $acknowledgementPrompt = if ($exitCode -ne 0) {
             'Startup failed. Review the error above, then press ENTER to close this window'
         }
         else {
             'Quick Tunnel has expired and is closed. Press ENTER to close this window'
         }
-        Write-Host $acknowledgementPrompt -ForegroundColor Yellow
+        Write-HumanOutput $acknowledgementPrompt -ForegroundColor Yellow
         Read-Host | Out-Null
+    }
+
+    if ($null -ne $cleanupError) {
+        throw $cleanupError
     }
 }
 
 if ($exitCode -ne 0) {
     exit $exitCode
+}
+}
+
+if ($MyInvocation.InvocationName -ne '.') {
+    Invoke-QuickTunnelReview
 }

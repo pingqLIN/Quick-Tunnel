@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import html
+import json
 import os
 import re
 import select
@@ -19,8 +21,8 @@ import tempfile
 import time
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterable, Sequence
 from urllib.error import URLError
 from urllib.parse import quote
@@ -111,6 +113,7 @@ TEXT_FILE_EXTENSIONS = {
     ".rs",
     ".java",
     ".kt",
+    ".log",
     ".rb",
     ".php",
     ".sh",
@@ -154,6 +157,7 @@ class InventoryEntry:
     source_path: Path
     relative_path: str
     length: int
+    content_hash: str
 
 
 @dataclass(frozen=True)
@@ -196,6 +200,117 @@ def matches_additional_exclude(relative_path: str, patterns: Sequence[str]) -> b
 
 def is_excluded_file_name(name: str) -> bool:
     return any(matches_pattern(name, pattern) for pattern in EXCLUDED_FILE_PATTERNS)
+
+
+def open_regular_file_beneath(
+    root_path: Path,
+    relative_path: str,
+    fallback_path: Path,
+) -> int:
+    """Open a root-relative file without following any symlink component."""
+
+    parts = PurePosixPath(relative_path).parts
+    if (
+        not parts
+        or PurePosixPath(relative_path).is_absolute()
+        or any(part in {"", ".", ".."} for part in parts)
+    ):
+        raise RuntimeError(f"Invalid source-relative path: {relative_path}")
+
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    directory_flag = getattr(os, "O_DIRECTORY", 0)
+    cloexec = getattr(os, "O_CLOEXEC", 0)
+    supports_descriptor_walk = (
+        os.open in os.supports_dir_fd
+        and nofollow != 0
+        and directory_flag != 0
+    )
+    if not supports_descriptor_walk:
+        try:
+            resolved_root = root_path.resolve(strict=True)
+            resolved_source = fallback_path.resolve(strict=True)
+            resolved_source.relative_to(resolved_root)
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                f"Source path escaped the selected folder: {relative_path}"
+            ) from exc
+        if fallback_path.is_symlink():
+            raise RuntimeError(
+                f"Source path became a symlink: {relative_path}"
+            )
+        return os.open(
+            fallback_path,
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | nofollow | cloexec,
+        )
+
+    directory_flags = os.O_RDONLY | directory_flag | nofollow | cloexec
+    current_descriptor: int | None = None
+    try:
+        current_descriptor = os.open(root_path, directory_flags)
+        for component in parts[:-1]:
+            next_descriptor = os.open(
+                component,
+                directory_flags,
+                dir_fd=current_descriptor,
+            )
+            os.close(current_descriptor)
+            current_descriptor = next_descriptor
+
+        return os.open(
+            parts[-1],
+            os.O_RDONLY | getattr(os, "O_BINARY", 0) | nofollow | cloexec,
+            dir_fd=current_descriptor,
+        )
+    except OSError as exc:
+        raise RuntimeError(
+            f"Source path escaped or crossed a symlink: {relative_path}"
+        ) from exc
+    finally:
+        if current_descriptor is not None:
+            os.close(current_descriptor)
+
+
+def hash_regular_file(
+    path: Path,
+    relative_path: str,
+    expected_length: int | None = None,
+    root_path: Path | None = None,
+) -> tuple[int, str]:
+    """Hash a stable regular-file view without following a final symlink."""
+
+    try:
+        file_descriptor = open_regular_file_beneath(
+            root_path if root_path is not None else path.parent,
+            relative_path if root_path is not None else path.name,
+            path,
+        )
+    except (OSError, RuntimeError) as exc:
+        raise RuntimeError(
+            f"Unable to inspect share candidate: {relative_path}"
+        ) from exc
+
+    try:
+        before = os.fstat(file_descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise RuntimeError(
+                f"Source path is no longer a regular file: {relative_path}"
+            )
+        if expected_length is not None and before.st_size != expected_length:
+            raise RuntimeError(f"Source file changed: {relative_path}")
+
+        digest = hashlib.sha256()
+        with os.fdopen(file_descriptor, "rb", closefd=False) as source_file:
+            while chunk := source_file.read(1024 * 1024):
+                digest.update(chunk)
+
+        after = os.fstat(file_descriptor)
+        stable_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+        if any(getattr(before, field) != getattr(after, field) for field in stable_fields):
+            raise RuntimeError(f"Source file changed while hashing: {relative_path}")
+
+        return before.st_size, digest.hexdigest()
+    finally:
+        os.close(file_descriptor)
 
 
 def build_inventory(
@@ -259,11 +374,19 @@ def build_inventory(
                 oversized_count += 1
                 continue
 
+            stable_length, content_hash = hash_regular_file(
+                child_path,
+                relative_path,
+                expected_length=file_size,
+                root_path=root_path,
+            )
+
             files.append(
                 InventoryEntry(
                     source_path=child_path,
                     relative_path=relative_path,
-                    length=file_size,
+                    length=stable_length,
+                    content_hash=content_hash,
                 )
             )
 
@@ -283,9 +406,14 @@ def contains_potential_secret(entry: InventoryEntry) -> bool:
         return False
 
     try:
-        content = entry.source_path.read_text(encoding="utf-8", errors="ignore")
+        content_bytes = entry.source_path.read_bytes()
     except OSError as exc:
         raise RuntimeError(f"Unable to scan file: {entry.relative_path}") from exc
+
+    if content_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):
+        content = content_bytes.decode("utf-16", errors="replace")
+    else:
+        content = content_bytes.decode("utf-8-sig", errors="replace")
 
     return any(pattern.search(content) for pattern in SECRET_PATTERNS)
 
@@ -396,24 +524,11 @@ def copy_inventory_entry(
     """Copy a checked regular file into staging without following a final symlink."""
 
     source_path = entry.source_path
-    if source_path.is_symlink():
-        raise RuntimeError(
-            f"Source path became a symlink during staging: {entry.relative_path}"
-        )
-
-    try:
-        resolved_source_root = source_root.resolve(strict=True)
-        resolved_source = source_path.resolve(strict=True)
-        resolved_source.relative_to(resolved_source_root)
-    except (OSError, ValueError) as exc:
-        raise RuntimeError(
-            f"Source path escaped the selected folder: {entry.relative_path}"
-        ) from exc
-
-    flags = os.O_RDONLY
-    flags |= getattr(os, "O_BINARY", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
-    file_descriptor = os.open(source_path, flags)
+    file_descriptor = open_regular_file_beneath(
+        source_root,
+        entry.relative_path,
+        source_path,
+    )
     try:
         source_stat = os.fstat(file_descriptor)
         if not stat.S_ISREG(source_stat.st_mode):
@@ -426,9 +541,35 @@ def copy_inventory_entry(
             )
 
         destination_path.parent.mkdir(parents=True, exist_ok=True)
-        with os.fdopen(file_descriptor, "rb", closefd=False) as source_file:
-            with destination_path.open("xb") as destination_file:
-                shutil.copyfileobj(source_file, destination_file)
+        digest = hashlib.sha256()
+        before = source_stat
+        try:
+            with os.fdopen(file_descriptor, "rb", closefd=False) as source_file:
+                with destination_path.open("xb") as destination_file:
+                    while chunk := source_file.read(1024 * 1024):
+                        destination_file.write(chunk)
+                        digest.update(chunk)
+                    destination_file.flush()
+                    os.fsync(destination_file.fileno())
+
+            after = os.fstat(file_descriptor)
+            stable_fields = (
+                "st_dev",
+                "st_ino",
+                "st_size",
+                "st_mtime_ns",
+                "st_ctime_ns",
+            )
+            if any(
+                getattr(before, field) != getattr(after, field)
+                for field in stable_fields
+            ) or digest.hexdigest() != entry.content_hash:
+                raise RuntimeError(
+                    f"Source file changed during staging: {entry.relative_path}"
+                )
+        except Exception:
+            destination_path.unlink(missing_ok=True)
+            raise
     finally:
         os.close(file_descriptor)
 
@@ -618,11 +759,11 @@ def get_tunnel_error_summary(log_paths: Sequence[Path]) -> tuple[str, ...]:
     return tuple(diagnostics[-10:])
 
 
-def wait_for_stop(duration_minutes: int) -> bool:
+def wait_for_stop(duration_minutes: int, *, allow_standard_input: bool = True) -> bool:
     """Wait for Enter or timeout. Return True when the timeout wins."""
 
     timeout_seconds = duration_minutes * 60
-    if not sys.stdin.isatty():
+    if not allow_standard_input or not sys.stdin.isatty():
         time.sleep(timeout_seconds)
         return True
 
@@ -680,7 +821,62 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-qr-code", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--wait-for-acknowledgement", action="store_true")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Write versioned NDJSON lifecycle events to stdout.",
+    )
     return parser
+
+
+def write_review_event(
+    output_stream: object,
+    *,
+    event: str,
+    mode: str,
+    public_url: str | None,
+    expires_at: str | None,
+    server_pid: int | None,
+    tunnel_pid: int | None,
+    staging_root: Path | None,
+    error: str | None,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "event": event,
+        "mode": mode,
+        "public_url": public_url,
+        "expires_at": expires_at,
+        "server_pid": server_pid,
+        "tunnel_pid": tunnel_pid,
+        "staging_root": str(staging_root) if staging_root is not None else None,
+        "error": error,
+    }
+    print(json.dumps(payload, separators=(",", ":")), file=output_stream, flush=True)
+
+
+def redact_machine_error(
+    message: str,
+    sensitive_paths: Sequence[Path | None],
+) -> str:
+    redacted = SENSITIVE_VALUE_PATTERN.sub(r"\1\2[REDACTED]", message)
+    path_strings: set[str] = set()
+    for path in sensitive_paths:
+        if path is None:
+            continue
+        raw_path = str(path)
+        path_strings.add(raw_path)
+        path_strings.add(raw_path.replace("\\", "\\\\"))
+        try:
+            resolved_path = str(path.expanduser().resolve(strict=False))
+            path_strings.add(resolved_path)
+            path_strings.add(resolved_path.replace("\\", "\\\\"))
+        except OSError:
+            pass
+    for path_string in sorted(path_strings, key=len, reverse=True):
+        if path_string:
+            redacted = redacted.replace(path_string, "[PATH]")
+    return redacted
 
 
 def run_review(args: argparse.Namespace) -> int:
@@ -688,11 +884,25 @@ def run_review(args: argparse.Namespace) -> int:
     tunnel_process: ManagedProcess | None = None
     tunnel_log_paths: tuple[Path, ...] = ()
     temporary_directory: tempfile.TemporaryDirectory[str] | None = None
+    temporary_root: Path | None = None
     sharing_started = False
     stopped_by_timeout = False
     exit_code = 0
+    public_review_url: str | None = None
+    stop_time: datetime | None = None
+    machine_stdout = sys.stdout
+    if args.json:
+        # Keep stdout parseable as NDJSON while retaining human diagnostics.
+        sys.stdout = sys.stderr
 
     try:
+        if args.json and args.wait_for_acknowledgement:
+            raise ValueError("--json cannot be combined with --wait-for-acknowledgement")
+        if args.json and not args.validate_only and not args.yes:
+            raise ValueError(
+                "--json public mode requires --yes so stdout remains non-interactive NDJSON"
+            )
+
         resolved_path = args.folder.expanduser().resolve(strict=True)
         if not resolved_path.is_dir():
             raise NotADirectoryError(f"Folder not found: {args.folder}")
@@ -727,6 +937,7 @@ def run_review(args: argparse.Namespace) -> int:
                     source_path=destination_path,
                     relative_path=entry.relative_path,
                     length=entry.length,
+                    content_hash=entry.content_hash,
                 )
             )
             shared_files.append(
@@ -786,6 +997,18 @@ def run_review(args: argparse.Namespace) -> int:
 
         if args.validate_only:
             print("Validation complete. No public tunnel was opened.")
+            if args.json:
+                write_review_event(
+                    machine_stdout,
+                    event="validated",
+                    mode="validate_only",
+                    public_url=None,
+                    expires_at=None,
+                    server_pid=server_process.process.pid,
+                    tunnel_pid=None,
+                    staging_root=temporary_root,
+                    error=None,
+                )
             return 0
 
         print()
@@ -895,7 +1118,7 @@ def run_review(args: argparse.Namespace) -> int:
             f"Tunnel PID: {tunnel_process.process.pid}"
         )
 
-        if not args.no_qr_code:
+        if not args.no_qr_code and not args.json:
             qrencode_path = shutil.which("qrencode")
             if qrencode_path is not None:
                 print()
@@ -915,7 +1138,22 @@ def run_review(args: argparse.Namespace) -> int:
             "Press ENTER to stop early. Automatic stop: "
             f"{stop_time.isoformat(sep=' ', timespec='seconds')}"
         )
-        stopped_by_timeout = wait_for_stop(args.duration_minutes)
+        if args.json:
+            write_review_event(
+                machine_stdout,
+                event="public_ready",
+                mode="public",
+                public_url=public_review_url,
+                expires_at=stop_time.astimezone(timezone.utc).isoformat(),
+                server_pid=server_process.process.pid,
+                tunnel_pid=tunnel_process.process.pid,
+                staging_root=temporary_root,
+                error=None,
+            )
+        stopped_by_timeout = wait_for_stop(
+            args.duration_minutes,
+            allow_standard_input=not args.json,
+        )
         if stopped_by_timeout:
             print(
                 "Quick Tunnel lifetime expired. Stopping public sharing now."
@@ -924,6 +1162,26 @@ def run_review(args: argparse.Namespace) -> int:
         print("\nStopping public sharing.")
     except Exception as exc:
         exit_code = 1
+        if args.json:
+            machine_error = redact_machine_error(
+                str(exc),
+                (args.folder, temporary_root),
+            )
+            write_review_event(
+                machine_stdout,
+                event="error",
+                mode="validate_only" if args.validate_only else "public",
+                public_url=public_review_url,
+                expires_at=(
+                    stop_time.astimezone(timezone.utc).isoformat()
+                    if stop_time
+                    else None
+                ),
+                server_pid=server_process.process.pid if server_process else None,
+                tunnel_pid=tunnel_process.process.pid if tunnel_process else None,
+                staging_root=temporary_root,
+                error=machine_error,
+            )
         print(f"ERROR: {exc}", file=sys.stderr)
         diagnostics = get_tunnel_error_summary(tunnel_log_paths)
         if diagnostics:
@@ -945,7 +1203,24 @@ def run_review(args: argparse.Namespace) -> int:
                 f"Sharing stopped at {stopped_at}. Temporary files were removed."
             )
 
-        if args.wait_for_acknowledgement and (
+        if args.json and temporary_root is not None:
+            write_review_event(
+                machine_stdout,
+                event="cleanup",
+                mode="validate_only" if args.validate_only else "public",
+                public_url=public_review_url,
+                expires_at=(
+                    stop_time.astimezone(timezone.utc).isoformat()
+                    if stop_time
+                    else None
+                ),
+                server_pid=server_process.process.pid if server_process else None,
+                tunnel_pid=tunnel_process.process.pid if tunnel_process else None,
+                staging_root=temporary_root,
+                error=None,
+            )
+
+        if not args.json and args.wait_for_acknowledgement and (
             stopped_by_timeout or exit_code != 0
         ):
             prompt = (
@@ -959,6 +1234,9 @@ def run_review(args: argparse.Namespace) -> int:
                 input(prompt)
             except EOFError:
                 pass
+
+        if args.json:
+            sys.stdout = machine_stdout
 
     return exit_code
 
