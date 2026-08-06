@@ -7,7 +7,6 @@ import argparse
 import fnmatch
 import hashlib
 import html
-from http.client import HTTPConnection, HTTPException
 import json
 import os
 import re
@@ -26,8 +25,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterable, Sequence
 from urllib.error import URLError
-from urllib.parse import quote, urlsplit
-from urllib.request import urlopen
+from urllib.parse import quote
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 
 EXCLUDED_DIRECTORY_NAMES = {
@@ -661,42 +660,21 @@ def wait_for_local_server(
     process: subprocess.Popen[bytes],
     url: str,
 ) -> None:
-    parsed_url = urlsplit(url)
-    if (
-        parsed_url.scheme != "http"
-        or parsed_url.hostname is None
-        or parsed_url.port is None
-    ):
-        raise ValueError(f"Local server URL must be an HTTP URL: {url}")
-
-    request_target = parsed_url.path or "/"
-    if parsed_url.query:
-        request_target = f"{request_target}?{parsed_url.query}"
-
+    # Readiness checks target loopback only. Do not let a runner or user proxy
+    # intercept the request and make a healthy local server appear unavailable.
+    local_opener = build_opener(ProxyHandler({}))
     for _ in range(25):
         exit_code = process.poll()
         if exit_code is not None:
             raise RuntimeError(f"Local HTTP server exited with code {exit_code}.")
 
-        connection = HTTPConnection(
-            parsed_url.hostname,
-            parsed_url.port,
-            timeout=2,
-        )
         try:
-            connection.request("GET", request_target, headers={"Connection": "close"})
-            response = connection.getresponse()
-            if response.status == 200:
-                response.read()
-                return
-        except (HTTPException, OSError):
-            pass
-        finally:
-            connection.close()
-
-        if process.poll() is not None:
-            break
-        time.sleep(0.25)
+            request = Request(url, method="HEAD")
+            with local_opener.open(request, timeout=2) as response:
+                if response.status == 200:
+                    return
+        except (OSError, URLError):
+            time.sleep(0.25)
 
     raise TimeoutError(f"Local HTTP server did not become ready: {url}")
 
