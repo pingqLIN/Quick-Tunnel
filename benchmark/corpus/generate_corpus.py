@@ -27,14 +27,17 @@ SECRET_VALUES = (
 
 
 def _padded_text(prefix: str, payload_bytes: int) -> str:
+    """Build the deterministic ASCII payload in O(n) time."""
+
     filler = (
         "\nThis is deterministic benchmark source text. "
         "It contains no live credential material."
     )
-    text = prefix
-    while len(text.encode("utf-8")) < payload_bytes:
-        text += filler
-    return text[:payload_bytes]
+    if payload_bytes <= len(prefix):
+        return prefix[:payload_bytes]
+    remaining = payload_bytes - len(prefix)
+    repeats = (remaining + len(filler) - 1) // len(filler)
+    return (prefix + filler * repeats)[:payload_bytes]
 
 
 def generate(
