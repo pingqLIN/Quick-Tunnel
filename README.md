@@ -16,9 +16,10 @@ review. The source folder is never served directly.
 
 ## Status
 
-No tagged release exists yet. Until the first release, the latest commit on
-`main` is the supported line; confirm the exact revision and GitHub Actions
-checks before publishing or sharing a release candidate.
+The first tagged release `v0.1.0` is pending. CI must pass and publication must
+be explicitly authorized before the tag is created. Until then, the latest
+commit on `main` is the supported line; confirm the exact revision and GitHub
+Actions checks before publishing or sharing a release candidate.
 
 Project documentation: [documentation index](docs/README.md),
 [threat model](docs/THREAT_MODEL.md),
