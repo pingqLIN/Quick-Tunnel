@@ -85,6 +85,9 @@ Automator 工作流程會安裝到：
 ~/Library/Services/Share to Codex Review.workflow
 ~~~
 
+為了相容性，磁碟上的工作流程資料夾保留這個既有名稱；Finder 顯示的動作名稱
+是 **Make Q-Tunnel**。
+
 在其他 Mac 安裝前，先執行不會修改系統的相容性檢查：
 
 ~~~zsh
@@ -99,7 +102,7 @@ Automator 工作流程會安裝到：
 交由 Finder 正常探索，並回報註冊尚未確認，不會把已正確複製的安裝誤判成
 損壞。
 
-在 Finder 選取一個資料夾，再選擇 **快速動作 > Share to Codex Review**。
+在 Finder 選取一個資料夾，再選擇 **快速動作 > Make Q-Tunnel**。
 程式會開啟 Terminal 視窗，讓公開警告、URL、重試診斷、剩餘時效與清理
 結果保持可見。
 

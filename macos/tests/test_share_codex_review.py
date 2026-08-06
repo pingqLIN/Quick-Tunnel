@@ -532,7 +532,7 @@ class IntegrationTests(unittest.TestCase):
         )
         self.assertEqual(
             service["NSMenuItem"]["default"],
-            "Share to Codex Review",
+            "Make Q-Tunnel",
         )
 
         metadata = workflow["workflowMetaData"]

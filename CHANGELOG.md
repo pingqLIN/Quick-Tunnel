@@ -34,6 +34,8 @@ published a tagged release.
 - The shared safe server now rejects non-loopback bind addresses at its CLI
   boundary.
 - Windows now enforces Python 3.9 or newer.
+- Renamed the user-visible Explorer context-menu and Finder Quick Action label
+  to `Make Q-Tunnel`.
 
 ## 2026-07-18
 

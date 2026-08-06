@@ -110,7 +110,10 @@ forward that field unnecessarily. See the
 
 Double-click `context-menu-setup.cmd`, choose **Install**, and type `INSTALL`.
 The command is installed for the current Windows user only. On Windows 11 it
-may appear under **Show more options**.
+may appear under **Show more options**. The installed entry is labelled
+**Make Q-Tunnel**.
+
+![Windows Explorer context menu showing the Make Q-Tunnel entry](docs/assets/readme/make-q-tunnel-context-menu.png)
 
 To remove it:
 
@@ -133,8 +136,8 @@ Run the non-mutating compatibility and version check first, or choose
 /bin/zsh ./macos/manage-finder-quick-action.sh doctor
 ~~~
 
-Select one folder in Finder, then choose **Quick Actions > Share to Codex
-Review**. Removal is recoverable: installed files are moved into sibling
+Select one folder in Finder, then choose **Quick Actions > Make Q-Tunnel**.
+Removal is recoverable: installed files are moved into sibling
 `.del` folders instead of being permanently erased.
 
 ## Safety model

@@ -12,7 +12,7 @@
             <key>NSMenuItem</key>
             <dict>
                 <key>default</key>
-                <string>Share to Codex Review</string>
+                <string>Make Q-Tunnel</string>
             </dict>
             <key>NSMessage</key>
             <string>runWorkflowAsService</string>

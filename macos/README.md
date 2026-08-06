@@ -88,6 +88,9 @@ It installs the Automator workflow at:
 ~/Library/Services/Share to Codex Review.workflow
 ~~~
 
+The on-disk workflow folder keeps this legacy name for compatibility; Finder
+shows the action as **Make Q-Tunnel**.
+
 Before installing on another Mac, run the non-mutating compatibility check:
 
 ~~~zsh
@@ -104,8 +107,8 @@ that private helper is missing or behaves differently, normal Finder discovery
 remains supported and the unconfirmed registry state is reported without
 misclassifying the copied installation as damaged.
 
-Select exactly one folder in Finder and choose **Quick Actions > Share to Codex
-Review**. A Terminal window opens so the warning, URL, retry diagnostics,
+Select exactly one folder in Finder and choose **Quick Actions > Make Q-Tunnel**.
+A Terminal window opens so the warning, URL, retry diagnostics,
 lifetime, and cleanup remain visible.
 
 On first use, macOS may ask whether Finder may control Terminal and whether

@@ -101,7 +101,10 @@ JSON 公開模式要求 `-Yes` 或 `--yes`，避免標準輸出被互動提示�
 ## Windows 檔案總管右鍵選單
 
 雙擊 `context-menu-setup.cmd`，選擇 **Install**，再輸入 `INSTALL`。選單只會
-安裝到目前 Windows 使用者。Windows 11 可能將它放在「顯示更多選項」。
+安裝到目前 Windows 使用者。Windows 11 可能將它放在「顯示更多選項」。安裝
+後的選單名稱為 **Make Q-Tunnel**。
+
+![Windows 檔案總管右鍵選單中的 Make Q-Tunnel 選項](docs/assets/readme/make-q-tunnel-context-menu.png)
 
 移除方式：
 
@@ -124,7 +127,7 @@ JSON 公開模式要求 `-Yes` 或 `--yes`，避免標準輸出被互動提示�
 /bin/zsh ./macos/manage-finder-quick-action.sh doctor
 ~~~
 
-在 Finder 選取一個資料夾，再選擇 **快速動作 > Share to Codex Review**。
+在 Finder 選取一個資料夾，再選擇 **快速動作 > Make Q-Tunnel**。
 移除時不會永久刪除安裝檔案，而是移到同層的 `.del` 資料夾，保留復原空間。
 
 ## 安全模型
