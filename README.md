@@ -6,7 +6,16 @@ review. The source folder is never served directly.
 
 [Traditional Chinese reference](README.zh-tw.md)
 
-Project documentation: [threat model](docs/THREAT_MODEL.md),
+![Original oversized-head mole guardian opening a small consent gate at the mouth of a glowing temporary review tunnel while holding a sealed snapshot capsule; the right cave contains a bed, bookshelf, and bathtub.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+
+## Status
+
+No tagged release exists yet. Until the first release, the latest commit on
+`main` is the supported line; confirm the exact revision and GitHub Actions
+checks before publishing or sharing a release candidate.
+
+Project documentation: [documentation index](docs/README.md),
+[threat model](docs/THREAT_MODEL.md),
 [Agent integration](docs/AGENT_INTEGRATION.md),
 [security policy](SECURITY.md), [contributing guide](CONTRIBUTING.md), and
 [changelog](CHANGELOG.md).
@@ -28,6 +37,15 @@ Automator, AppleScript, and `plutil`.
 
 See the [macOS guide](macos/README.md) for Finder Quick Action installation,
 feature parity, and verification.
+
+## Before you share
+
+Quick Tunnel endpoints are unauthenticated and temporary. Anyone who obtains
+the generated URL can access the filtered snapshot while the process is live.
+Do not use this project for credentials, regulated data, or other high-
+sensitivity material. Before public mode, inspect the selected folder, run
+`-ValidateOnly`, and add project-specific exclusions with `-AdditionalExclude`.
+Use `-Yes` only inside an already approved workflow.
 
 ## Usage
 
@@ -171,8 +189,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
 GitHub Actions runs the Windows suite, macOS Python and native syntax checks,
-shared safe-server tests, and a current-Python compatibility job. CI never opens
-a public tunnel or installs desktop integrations.
+shared safe-server tests, and a Python 3.14 compatibility job. CI never opens a
+public tunnel or installs desktop integrations.
 
 ## License
 

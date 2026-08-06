@@ -6,7 +6,14 @@ HTTP 伺服器直接提供。
 
 [英文權威版本](README.md)
 
-專案文件：[威脅模型](docs/THREAT_MODEL.zh-tw.md)、
+![原創的大頭鼴鼠守護者在發光的暫時審查隧道入口開啟同意閘門，同時抱著封存快照膠囊；右側洞穴內有床、書架與浴缸。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+
+## 專案狀態
+
+目前尚未建立標籤版本。在第一個正式版本前，`main` 的最新提交是支援線；
+發布或分享候選版本前，請確認確切修訂版本與 GitHub Actions 檢查結果。
+
+專案文件：[文件索引](docs/README.zh-tw.md)、[威脅模型](docs/THREAT_MODEL.zh-tw.md)、
 [Agent 整合](docs/AGENT_INTEGRATION.zh-tw.md)、
 [安全政策](SECURITY.zh-tw.md)、[參與開發](CONTRIBUTING.zh-tw.md)與
 [變更紀錄](CHANGELOG.zh-tw.md)。
@@ -27,6 +34,13 @@ AppleScript 與 `plutil`。
 
 Finder Quick Action 安裝方式、功能對照與驗證說明請參閱
 [macOS 指南](macos/README.zh-tw.md)。
+
+## 分享前注意事項
+
+Quick Tunnel 端點未經身分驗證且只會暫時存在。程序執行期間，任何取得產生
+網址的人都能存取過濾後的快照。本專案不適合處理憑證、受法規管制的資料或
+其他高敏感度內容。公開前請檢查目標資料夾、先執行 `-ValidateOnly`，並使用
+`-AdditionalExclude` 排除專案特有的私人路徑。`-Yes` 只能用在已核准的工作流程。
 
 ## 使用方式
 
@@ -159,8 +173,8 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
 GitHub Actions 會執行 Windows 測試、macOS Python 與原生語法檢查、共用安全
-伺服器測試，以及目前 Python 版本的相容性工作。CI 不會建立公開通道，
-也不會安裝桌面整合。
+伺服器測試，以及 Python 3.14 相容性工作。CI 不會建立公開通道，也不會安裝
+桌面整合。
 
 ## 授權
 

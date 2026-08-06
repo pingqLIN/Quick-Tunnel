@@ -38,7 +38,7 @@ Finder 重複性測試會安裝與移除目前使用者的整合項目，只能�
 ## 持續整合
 
 `ci.yml` 會執行 Windows 迴歸測試、macOS Python、shell 與屬性清單
-檢查、共用安全伺服器測試，以及目前 Python 相容性工作。
+檢查、共用安全伺服器測試，以及 Python 3.14 相容性工作。
 `dependency-review.yml` 會檢查 Pull Request 的相依項目變更。本機通過不能
 取代同一筆提交版本的實際 GitHub Actions 結果。
 

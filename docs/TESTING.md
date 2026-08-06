@@ -40,7 +40,7 @@ an existing or partial installation, and removals remain recoverable in sibling
 ## Continuous integration
 
 `ci.yml` runs Windows regression tests, the macOS Python and shell/property-list
-checks, shared safe-server tests, and the current Python compatibility job.
+checks, shared safe-server tests, and the Python 3.14 compatibility job.
 `dependency-review.yml` examines dependency changes in pull requests. Local
 passes do not substitute for an actual GitHub Actions result on the committed
 revision.
