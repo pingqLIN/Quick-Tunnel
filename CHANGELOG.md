@@ -7,6 +7,8 @@ published a tagged release.
 
 ## Unreleased
 
+## 0.1.0 - 2026-08-06
+
 ### Added
 
 - Versioned NDJSON lifecycle output for Windows `-Json` and macOS `--json`.
