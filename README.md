@@ -8,6 +8,12 @@ review. The source folder is never served directly.
 
 ![Mole mascot wearing sunglasses and carrying a review capsule and white cane through a glowing temporary review tunnel into a furnished cave with a bed, bookshelf, and bathtub.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
 
+> Filter locally. Share deliberately. Review safely.
+
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](#requirements)
+[![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Event schema v1](https://img.shields.io/badge/Event%20schema-v1-65a30d)](docs/THREAT_MODEL.md#machine-readable-output)
+
 ## Status
 
 No tagged release exists yet. Until the first release, the latest commit on
@@ -62,6 +68,9 @@ opening a public tunnel:
 
 The default public lifetime is 30 minutes. Change it with
 `-DurationMinutes`, or press Enter to stop early.
+
+Use the [sharing and filtering matrix](docs/SHARING_MATRIX.md) to choose a
+sharing mode and understand what the default filter does—and does not—protect.
 
 Common Windows options:
 

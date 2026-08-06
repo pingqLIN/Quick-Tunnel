@@ -3,6 +3,7 @@
 [Traditional Chinese reference](README.zh-tw.md)
 
 - [Threat model](THREAT_MODEL.md)
+- [Sharing and filtering matrix](SHARING_MATRIX.md)
 - [Testing and verification](TESTING.md)
 - [Release policy](RELEASES.md)
 - [GitHub repository settings](GITHUB_SETTINGS.md)
