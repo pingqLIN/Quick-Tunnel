@@ -2,8 +2,8 @@
 
 [Traditional Chinese reference](CHANGELOG.zh-tw.md)
 
-All notable changes to this project are recorded here. The project has not yet
-published a tagged release.
+All notable changes to this project are recorded here. Tagged releases follow
+[Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
