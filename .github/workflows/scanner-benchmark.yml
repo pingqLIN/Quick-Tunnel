@@ -12,9 +12,29 @@ permissions:
   contents: read
 
 jobs:
-  benchmark:
+  benchmark-v2:
+    name: benchmark-v2 (${{ matrix.profile }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: general
+            safe_files: 3000
+            secret_files: 120
+            payload_bytes: 16384
+            repeats: 7
+          - profile: file-heavy
+            safe_files: 20000
+            secret_files: 200
+            payload_bytes: 1024
+            repeats: 5
+          - profile: byte-heavy
+            safe_files: 1200
+            secret_files: 80
+            payload_bytes: 262144
+            repeats: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -24,29 +44,38 @@ jobs:
         run: >-
           python -m py_compile
           benchmark/runner.py
+          benchmark/runner_v2.py
           benchmark/corpus/generate_corpus.py
           benchmark/scanners/baseline.py
           benchmark/scanners/hybrid.py
+          benchmark/scanners/hybrid_v2.py
       - name: Generate deterministic corpus
         run: >-
           python -m benchmark.corpus.generate_corpus
-          --safe-files 3000
-          --secret-files 120
-          --payload-bytes 16384
-      - name: Run scanner benchmark
-        run: python -m benchmark.runner --repeats 7 --warmups 1
+          --safe-files ${{ matrix.safe_files }}
+          --secret-files ${{ matrix.secret_files }}
+          --payload-bytes ${{ matrix.payload_bytes }}
+      - name: Run scanner v2 benchmark
+        run: >-
+          python -m benchmark.runner_v2
+          --repeats ${{ matrix.repeats }}
+          --warmups 1
+          --json-output benchmark/reports/scanner-v2-${{ matrix.profile }}.json
+          --markdown-output benchmark/reports/QT-SCANNER-V2-${{ matrix.profile }}.md
       - name: Publish Markdown summary
         if: always()
         shell: bash
         run: |
-          if [[ -f benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md ]]; then
-            cat benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md >> "$GITHUB_STEP_SUMMARY"
+          report="benchmark/reports/QT-SCANNER-V2-${{ matrix.profile }}.md"
+          if [[ -f "$report" ]]; then
+            echo "## Profile: ${{ matrix.profile }}" >> "$GITHUB_STEP_SUMMARY"
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload benchmark report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: scanner-benchmark-report
+          name: scanner-v2-${{ matrix.profile }}
           path: benchmark/reports/
           if-no-files-found: error
           retention-days: 14
