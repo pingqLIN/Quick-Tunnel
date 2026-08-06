@@ -1,28 +1,189 @@
-"""Hybrid risk based scanner prototype.
+"""Single-pass candidate that fuses hashing and secret detection.
 
-Phase 1 keeps this isolated from production. The benchmark compares the
-pipeline before any production replacement decision.
+The candidate preserves the production exclusion rules, stable-file checks,
+encoding behavior, and secret patterns. It avoids rereading eligible text files
+after inventory hashing.
 """
 
+from __future__ import annotations
+
+import hashlib
+import os
+import stat
 from pathlib import Path
+from typing import Any
+
+from .baseline import DEFAULT_MAX_FILE_BYTES, load_production_module
 
 
-HIGH_RISK_NAMES = {
-    '.env',
-    'credentials.json',
-    'secrets.yaml',
-    'private.key',
-}
+def _inspect_regular_file(
+    production: Any,
+    root: Path,
+    path: Path,
+    relative_path: str,
+    expected_length: int,
+) -> tuple[int, str, bool]:
+    try:
+        descriptor = production.open_regular_file_beneath(
+            root,
+            relative_path,
+            path,
+        )
+    except (OSError, RuntimeError) as exc:
+        raise RuntimeError(
+            f"Unable to inspect share candidate: {relative_path}"
+        ) from exc
+
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode):
+            raise RuntimeError(
+                f"Source path is no longer a regular file: {relative_path}"
+            )
+        if before.st_size != expected_length:
+            raise RuntimeError(f"Source file changed: {relative_path}")
+
+        scannable = (
+            path.suffix.lower() in production.TEXT_FILE_EXTENSIONS
+            and before.st_size <= 2 * 1024 * 1024
+        )
+        captured = bytearray() if scannable else None
+        digest = hashlib.sha256()
+
+        with os.fdopen(descriptor, "rb", closefd=False) as source_file:
+            while chunk := source_file.read(1024 * 1024):
+                digest.update(chunk)
+                if captured is not None:
+                    captured.extend(chunk)
+
+        after = os.fstat(descriptor)
+        stable_fields = (
+            "st_dev",
+            "st_ino",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if any(
+            getattr(before, field) != getattr(after, field)
+            for field in stable_fields
+        ):
+            raise RuntimeError(
+                f"Source file changed while hashing: {relative_path}"
+            )
+
+        detected = False
+        if captured is not None:
+            content_bytes = bytes(captured)
+            if content_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):
+                content = content_bytes.decode("utf-16", errors="replace")
+            else:
+                content = content_bytes.decode("utf-8-sig", errors="replace")
+            detected = any(
+                pattern.search(content)
+                for pattern in production.SECRET_PATTERNS
+            )
+
+        return before.st_size, digest.hexdigest(), detected
+    finally:
+        os.close(descriptor)
 
 
-def calculate_risk(path: Path) -> int:
-    score = 0
-    if path.name.lower() in HIGH_RISK_NAMES:
-        score += 50
-    if any(token in path.name.lower() for token in ('secret', 'token', 'password')):
-        score += 20
-    return score
+def scan_path(
+    root: Path,
+    *,
+    repo_root: Path | None = None,
+    maximum_file_bytes: int = DEFAULT_MAX_FILE_BYTES,
+) -> dict[str, Any]:
+    repository = repo_root or Path(__file__).resolve().parents[2]
+    production = load_production_module(repository)
 
+    pending_directories = [root]
+    detections: list[str] = []
+    logical_bytes = 0
+    files_considered = 0
+    excluded_count = 0
+    oversized_count = 0
 
-def should_deep_scan(path: Path) -> bool:
-    return calculate_risk(path) >= 50
+    while pending_directories:
+        directory = pending_directories.pop()
+        try:
+            children = sorted(
+                os.scandir(directory),
+                key=lambda item: production.path_sort_key(item.name),
+            )
+        except OSError as exc:
+            raise RuntimeError(
+                f"Unable to inspect directory: {directory}"
+            ) from exc
+
+        for child in children:
+            child_path = Path(child.path)
+            relative_path = child_path.relative_to(root).as_posix()
+
+            if child.is_symlink():
+                excluded_count += 1
+                continue
+
+            try:
+                if child.is_dir(follow_symlinks=False):
+                    if (
+                        child.name.casefold()
+                        in production.EXCLUDED_DIRECTORY_NAMES_CASEFOLD
+                        or production.matches_additional_exclude(
+                            relative_path,
+                            (),
+                        )
+                    ):
+                        excluded_count += 1
+                        continue
+                    pending_directories.append(child_path)
+                    continue
+
+                if not child.is_file(follow_symlinks=False):
+                    excluded_count += 1
+                    continue
+
+                if production.is_excluded_file_name(
+                    child.name
+                ) or production.matches_additional_exclude(
+                    relative_path,
+                    (),
+                ):
+                    excluded_count += 1
+                    continue
+
+                file_size = child.stat(follow_symlinks=False).st_size
+            except OSError as exc:
+                raise RuntimeError(
+                    f"Unable to inspect path: {child_path}"
+                ) from exc
+
+            if file_size > maximum_file_bytes:
+                oversized_count += 1
+                continue
+
+            stable_length, _content_hash, detected = _inspect_regular_file(
+                production,
+                root,
+                child_path,
+                relative_path,
+                file_size,
+            )
+            files_considered += 1
+            logical_bytes += stable_length
+            if detected:
+                detections.append(relative_path)
+
+    return {
+        "scanner": "fused-single-pass",
+        "files_considered": files_considered,
+        "logical_bytes": logical_bytes,
+        "estimated_physical_bytes_read": logical_bytes,
+        "excluded_count": excluded_count,
+        "oversized_count": oversized_count,
+        "detections": sorted(
+            detections,
+            key=production.path_sort_key,
+        ),
+    }
