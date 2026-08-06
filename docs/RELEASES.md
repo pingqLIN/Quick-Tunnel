@@ -2,9 +2,11 @@
 
 [Traditional Chinese reference](RELEASES.zh-tw.md)
 
-Quick Tunnel Review Share has not published a tagged release. Until the first
-release, `main` is the only supported line and may change without a stable API
-guarantee.
+Quick Tunnel Review Share has not yet published a tagged release. The first
+tagged release `v0.1.0` is pending: the changelog and release notes are
+prepared, and the tag will be created once the exact commit passes CI and
+publication is explicitly authorized. Until then, `main` is the only supported
+line and may change without a stable API guarantee.
 
 ## Versioning
 
