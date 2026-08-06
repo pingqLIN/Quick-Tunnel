@@ -42,11 +42,6 @@ jobs:
           if [[ -f benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md ]]; then
             cat benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload benchmark report
+      - name: Show benchmark files
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: scanner-benchmark-report
-          path: benchmark/reports/
-          if-no-files-found: error
-          retention-days: 14
+        run: find benchmark/reports -maxdepth 2 -type f -print 2>/dev/null || true
