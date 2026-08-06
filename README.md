@@ -6,7 +6,7 @@ review. The source folder is never served directly.
 
 [Traditional Chinese reference](README.zh-tw.md)
 
-![Original oversized-head mole guardian opening a small consent gate at the mouth of a glowing temporary review tunnel while holding a sealed snapshot capsule; the right cave contains a bed, bookshelf, and bathtub.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+![Mole mascot wearing sunglasses and carrying a review capsule and white cane through a glowing temporary review tunnel into a furnished cave with a bed, bookshelf, and bathtub.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
 
 ## Status
 

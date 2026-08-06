@@ -6,7 +6,7 @@ HTTP 伺服器直接提供。
 
 [英文權威版本](README.md)
 
-![原創的大頭鼴鼠守護者在發光的暫時審查隧道入口開啟同意閘門，同時抱著封存快照膠囊；右側洞穴內有床、書架與浴缸。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+![戴著墨鏡的鼴鼠吉祥物手持審查快照膠囊與白手杖，穿過發光的暫時審查隧道，通往設有床、書架與浴缸的家具洞穴。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
 
 ## 專案狀態
 
