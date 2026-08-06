@@ -26,7 +26,7 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterable, Sequence
 from urllib.error import URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener, urlopen
 
 
 EXCLUDED_DIRECTORY_NAMES = {
@@ -660,6 +660,9 @@ def wait_for_local_server(
     process: subprocess.Popen[bytes],
     url: str,
 ) -> None:
+    # Readiness checks target loopback only. Do not let a runner or user proxy
+    # intercept the request and make a healthy local server appear unavailable.
+    local_opener = build_opener(ProxyHandler({}))
     for _ in range(25):
         exit_code = process.poll()
         if exit_code is not None:
@@ -667,7 +670,7 @@ def wait_for_local_server(
 
         try:
             request = Request(url, method="HEAD")
-            with urlopen(request, timeout=2) as response:
+            with local_opener.open(request, timeout=2) as response:
                 if response.status == 200:
                     return
         except (OSError, URLError):

@@ -416,3 +416,7 @@ finally {
         Remove-Item -LiteralPath $finalTestRoot -Recurse -Force
     }
 }
+
+# The final child-process assertion intentionally observes exit code 1. Reset
+# the script process result so a passing test run is not reported as failed.
+exit 0

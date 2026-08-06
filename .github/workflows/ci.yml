@@ -19,16 +19,18 @@ jobs:
       - name: PowerShell syntax
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $files = @(
             'share-codex-review.ps1',
             'manage-context-menu.ps1',
             'windows/tests/test-share-codex-review.ps1'
           )
           foreach ($file in $files) {
+            $tokens = $null
             $errors = $null
             [void][System.Management.Automation.Language.Parser]::ParseFile(
               (Resolve-Path $file),
-              [ref]$null,
+              [ref]$tokens,
               [ref]$errors
             )
             if ($errors.Count -gt 0) {
