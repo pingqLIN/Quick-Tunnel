@@ -2,8 +2,10 @@
 
 英文版為規範性版本：[RELEASES.md](RELEASES.md)。
 
-Quick Tunnel Review Share 尚未發布帶有 Git 標籤的版本。第一次發布前，只有
-`main` 是受支援的開發線，且尚未承諾穩定 API。
+Quick Tunnel Review Share 尚未發布帶有 Git 標籤的版本。第一個標籤版本
+`v0.1.0` 正待發布：變更紀錄與發布說明已準備就緒，待完全相同的提交版本
+通過 CI 並取得明確發布授權後，才會建立 Git 標籤。在此之前，只有 `main`
+是受支援的開發線，且尚未承諾穩定 API。
 
 ## 版本規則
 
