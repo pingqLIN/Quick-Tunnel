@@ -1,0 +1,10 @@
+{
+  "files_scanned": 0,
+  "bytes_scanned": 0,
+  "duration_seconds": 0,
+  "throughput_mb_s": 0,
+  "detections": 0,
+  "false_positive": 0,
+  "false_negative": 0,
+  "memory_peak_mb": 0
+}
