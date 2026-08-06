@@ -59,9 +59,14 @@ Common options:
 | Skip the `SHARE` prompt | `--yes` |
 | Change retry count | `--quick-tunnel-attempts 3` |
 | Change retry base delay | `--quick-tunnel-retry-base-seconds 5` |
+| Emit versioned NDJSON | `--json` |
 
 `--yes` opens a public endpoint without the interactive confirmation and should
 be used only in an already approved workflow.
+
+`--json` emits versioned NDJSON lifecycle records. Public JSON mode requires
+`--yes`; use validate-only first and follow the two-phase
+[Agent integration contract](../docs/AGENT_INTEGRATION.md).
 
 ## Finder Quick Action
 
@@ -83,11 +88,17 @@ It installs the Automator workflow at:
 ~/Library/Services/Share to Codex Review.workflow
 ~~~
 
+The on-disk workflow folder keeps this legacy name for compatibility; Finder
+shows the action as **Make Q-Tunnel**.
+
 Before installing on another Mac, run the non-mutating compatibility check:
 
 ~~~zsh
 /bin/zsh ./macos/manage-finder-quick-action.sh doctor
 ~~~
+
+The same check is available as **Run doctor** in
+`finder-quick-action-setup.command`.
 
 It verifies macOS, Python 3.9 or newer, the required system tools, both workflow
 property lists, and the Python entry point. The installer refreshes Finder's
@@ -96,8 +107,8 @@ that private helper is missing or behaves differently, normal Finder discovery
 remains supported and the unconfirmed registry state is reported without
 misclassifying the copied installation as damaged.
 
-Select exactly one folder in Finder and choose **Quick Actions > Share to Codex
-Review**. A Terminal window opens so the warning, URL, retry diagnostics,
+Select exactly one folder in Finder and choose **Quick Actions > Make Q-Tunnel**.
+A Terminal window opens so the warning, URL, retry diagnostics,
 lifetime, and cleanup remain visible.
 
 On first use, macOS may ask whether Finder may control Terminal and whether
@@ -147,6 +158,8 @@ the integration will no longer be used.
 | Public URL verification | HTTP 200, content type, and marker check | Implemented |
 | QR output | Optional `qrencode` integration | Implemented |
 | Enter or lifetime stop | Terminal Return key or timeout | Implemented |
+| Stable snapshot hashing | Source and staged SHA-256 comparison | Implemented |
+| Machine-readable lifecycle | Versioned NDJSON events | Implemented |
 | Child and temp cleanup | `finally`-guarded process and directory cleanup | Implemented |
 | Explorer context menu | Finder Automator Quick Action | Implemented equivalent |
 | Install/status/uninstall | Per-user Finder integration manager | Implemented |
@@ -169,7 +182,12 @@ the integration will no longer be used.
   client can reach it. If the self-check warns, verify from the intended
   external client before relying on the URL.
 - Secret scanning is conservative and cannot prove that a folder contains no
-  private information. Review the folder and add project-specific exclusions.
+  private information. It covers configured text extensions up to 2 MiB, not
+  every copied binary, large file, or project-specific format. Review the folder
+  and add project-specific exclusions.
+- Inert remote rendering does not make a downloaded file safe to execute.
+- Force-killing the process or the host may bypass `finally` cleanup and leave a
+  temporary directory. See the [threat model](../docs/THREAT_MODEL.md).
 
 ## Developer verification
 
@@ -177,6 +195,7 @@ Cross-platform core tests:
 
 ~~~zsh
 python3 -m unittest discover -s macos/tests -v
+python3 -m unittest discover -s tests -v
 ~~~
 
 For a clean macOS user with no existing Quick Tunnel integration, the governed
@@ -192,12 +211,8 @@ removals use timestamped `.del` folders and remain recoverable. A pass confirms
 repeatability on the Mac that ran the test; it is not evidence for untested
 macOS releases, CPU architectures, or managed-device policies.
 
-Native VM evidence recorded on 2026-07-19 used macOS 15.7.7 x86_64, Python
-3.9.6, `cloudflared` 2026.6.1, and `qrencode` 4.1.1. The filtered public URL
-returned HTTP 200 and the review marker from an external host; QR generation,
-automatic expiry, and process cleanup passed. The VM could not reach its own
-public URL through its NAT path, so the same-Mac self-check correctly remained a
-warning rather than being reported as verified.
+Historical native macOS evidence and its revision boundary are recorded in the
+repository-level [testing document](../docs/TESTING.md).
 
 On macOS, also run:
 

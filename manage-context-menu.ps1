@@ -27,7 +27,7 @@ $ErrorActionPreference = 'Stop'
 
 $shareScriptPath = Join-Path $PSScriptRoot 'share-codex-review.ps1'
 $pwshCommand = Get-Command pwsh.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-$menuText = '分享給 Codex / ChatGPT 審查'
+$menuText = 'Make Q-Tunnel'
 $menuIcon = if ($null -ne $pwshCommand) { "$($pwshCommand.Source),0" } else { 'powershell.exe,0' }
 
 $entries = @(

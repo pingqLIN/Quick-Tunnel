@@ -9,7 +9,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo Codex Review context menu
+echo Make Q-Tunnel context menu
 echo   1. Install
 echo   2. Remove
 echo   3. Show status

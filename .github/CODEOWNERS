@@ -1,0 +1,13 @@
+# Default ownership for this small repository.
+* @pingqLIN
+
+# Keep automation and ownership policy under explicit review.
+/.github/ @pingqLIN
+/.github/CODEOWNERS @pingqLIN
+
+# Security-sensitive runtime surfaces.
+/*.ps1 @pingqLIN
+/*.cmd @pingqLIN
+/safe-review-server.py @pingqLIN
+/macos/ @pingqLIN
+/docs/ @pingqLIN

@@ -122,6 +122,16 @@ doctor_action() {
         return 1
     fi
 
+    cloudflared_path=$(command -v cloudflared || true)
+    if [[ -z "$cloudflared_path" ]]; then
+        print -u2 "ERROR: cloudflared is required and was not found in PATH."
+        return 1
+    fi
+    cloudflared_version=$($cloudflared_path --version 2>&1) || {
+        print -u2 "ERROR: cloudflared was found but its version could not be read."
+        return 1
+    }
+
     for source_file in \
         "$script_directory/share-codex-review.py" \
         "$script_directory/share-codex-review.command" \
@@ -156,6 +166,13 @@ PYTHON
 
     print "Compatibility check: Passed"
     print "Python: $($python_path -c 'import platform; print(platform.python_version())')"
+    print "cloudflared: $cloudflared_version"
+    qrencode_path=$(command -v qrencode || true)
+    if [[ -n "$qrencode_path" ]]; then
+        print "qrencode: Available ($($qrencode_path --version 2>&1 | /usr/bin/head -n 1))"
+    else
+        print "qrencode: Unavailable (optional)"
+    fi
     if [[ -x "$pbs_path" ]]; then
         print "Finder Services registry verification: Available"
     else

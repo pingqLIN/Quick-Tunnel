@@ -6,25 +6,46 @@ review. The source folder is never served directly.
 
 [Traditional Chinese reference](README.zh-tw.md)
 
+![Original oversized-head mole guardian opening a small consent gate at the mouth of a glowing temporary review tunnel while holding a sealed snapshot capsule; the right cave contains a bed, bookshelf, and bathtub.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+
+## Status
+
+No tagged release exists yet. Until the first release, the latest commit on
+`main` is the supported line; confirm the exact revision and GitHub Actions
+checks before publishing or sharing a release candidate.
+
+Project documentation: [documentation index](docs/README.md),
+[threat model](docs/THREAT_MODEL.md),
+[Agent integration](docs/AGENT_INTEGRATION.md),
+[security policy](SECURITY.md), [contributing guide](CONTRIBUTING.md), and
+[changelog](CHANGELOG.md).
+
 ## Requirements
 
-Windows:
+| Component | Documented support | Enforced check | Tested evidence |
+| --- | --- | --- | --- |
+| Windows | PowerShell 7; Python 3.9+ | `#requires` and runtime Python check | PowerShell 7.6.3 and Python 3.14.6 on 2026-07-19 |
+| macOS | macOS 14+ Homebrew path; Python 3.9+ | wrapper and Finder doctor check Python 3.9+ | macOS 15.7.7 x86_64 and Python 3.9.6 on 2026-07-19 |
+| `cloudflared` | A release still inside Cloudflare's one-year support window | executable presence; Finder doctor also reports the version | 2026.6.1 in the macOS VM and 2026.7.1 on Windows |
+| `qrencode` | Optional | no hard requirement | 4.1.1 in the macOS VM |
 
-- PowerShell 7 (`pwsh.exe`)
-- Python 3
-- `cloudflared`
-- Optional: `qrencode` for a terminal QR code
-
-macOS:
-
-- macOS 14 or newer is the supported Homebrew path
-- Python 3.9 or newer
-- `cloudflared`
-- Built-in zsh and Automator
-- Optional: `qrencode` for a terminal QR code
+There is no invented numeric `cloudflared` minimum: Cloudflare publishes a
+one-year release-support policy, while this project enforces only the CLI
+capabilities it uses. Keep `cloudflared` updated within that support window.
+The Finder path additionally requires built-in zsh, Terminal, Finder,
+Automator, AppleScript, and `plutil`.
 
 See the [macOS guide](macos/README.md) for Finder Quick Action installation,
 feature parity, and verification.
+
+## Before you share
+
+Quick Tunnel endpoints are unauthenticated and temporary. Anyone who obtains
+the generated URL can access the filtered snapshot while the process is live.
+Do not use this project for credentials, regulated data, or other high-
+sensitivity material. Before public mode, inspect the selected folder, run
+`-ValidateOnly`, and add project-specific exclusions with `-AdditionalExclude`.
+Use `-Yes` only inside an already approved workflow.
 
 ## Usage
 
@@ -42,6 +63,23 @@ opening a public tunnel:
 The default public lifetime is 30 minutes. Change it with
 `-DurationMinutes`, or press Enter to stop early.
 
+Common Windows options:
+
+| Purpose | Option |
+| --- | --- |
+| Change lifetime | `-DurationMinutes 10` |
+| Select a local port | `-Port 8080` |
+| Limit copied file size | `-MaxFileSizeMB 25` |
+| Add a wildcard exclusion | `-AdditionalExclude "private/*"` |
+| Disable QR output | `-NoQrCode` |
+| Skip the `SHARE` prompt | `-Yes` |
+| Change retry count | `-QuickTunnelAttempts 3` |
+| Change retry base delay | `-QuickTunnelRetryBaseSeconds 5` |
+| Emit versioned NDJSON | `-Json` |
+
+`-Yes` creates an unauthenticated public endpoint without the interactive
+confirmation. Use it only inside an already approved workflow.
+
 On macOS:
 
 ~~~zsh
@@ -54,11 +92,28 @@ Build and verify the filtered snapshot without opening a public tunnel:
 python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
 ~~~
 
+## Machine-readable lifecycle
+
+Use `-Json` on Windows or `--json` on macOS for versioned NDJSON lifecycle
+events. Validate-only emits `validated` and `cleanup`; public mode emits
+`public_ready` while the URL is live and `cleanup` after processes and staging
+are removed. Errors emit `error` and return a nonzero exit code.
+
+JSON public mode requires `-Yes` or `--yes` so stdout cannot block on a prompt.
+The version 1 fields are `schema_version`, `event`, `mode`, `public_url`,
+`expires_at`, `server_pid`, `tunnel_pid`, `staging_root`, and `error`. The
+explicit JSON option permits disclosure of the local `staging_root`; do not
+forward that field unnecessarily. See the
+[Agent integration contract](docs/AGENT_INTEGRATION.md).
+
 ## Windows Explorer context menu
 
 Double-click `context-menu-setup.cmd`, choose **Install**, and type `INSTALL`.
 The command is installed for the current Windows user only. On Windows 11 it
-may appear under **Show more options**.
+may appear under **Show more options**. The installed entry is labelled
+**Make Q-Tunnel**.
+
+![Windows Explorer context menu showing the Make Q-Tunnel entry](docs/assets/readme/make-q-tunnel-context-menu.png)
 
 To remove it:
 
@@ -74,8 +129,15 @@ Install the per-user Finder Quick Action:
 /bin/zsh ./macos/manage-finder-quick-action.sh install
 ~~~
 
-Select one folder in Finder, then choose **Quick Actions > Share to Codex
-Review**. Removal is recoverable: installed files are moved into sibling
+Run the non-mutating compatibility and version check first, or choose
+**Run doctor** from `finder-quick-action-setup.command`:
+
+~~~zsh
+/bin/zsh ./macos/manage-finder-quick-action.sh doctor
+~~~
+
+Select one folder in Finder, then choose **Quick Actions > Make Q-Tunnel**.
+Removal is recoverable: installed files are moved into sibling
 `.del` folders instead of being permanently erased.
 
 ## Safety model
@@ -93,6 +155,15 @@ Review**. Removal is recoverable: installed files are moved into sibling
 The secret scan is intentionally conservative and cannot guarantee that every
 credential or private datum has been detected. Review the selected folder and
 use `-AdditionalExclude` for project-specific private paths before sharing.
+It scans only configured text extensions whose staged size is at most 2 MiB;
+larger or unknown-format files may still be copied when they are under the
+separate copy-size limit. Remote inert rendering also does not make a downloaded
+file safe to execute.
+
+Cleanup is guaranteed for normal exit and handled failures. Force-killing the
+process, terminating the host, or an operating-system crash can leave temporary
+files behind. Follow the [threat model](docs/THREAT_MODEL.md) for recovery and
+residual-risk guidance.
 
 ## Quick Tunnel lifecycle
 
@@ -107,3 +178,24 @@ backoff; configuration errors and rate-limit responses are not retried.
 Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
 Anyone with the generated URL can access the filtered snapshot while the
 process is running.
+
+## Developer verification
+
+```powershell
+./windows/tests/test-share-codex-review.ps1
+python -m unittest discover -s tests -v
+```
+
+```zsh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s macos/tests -v
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+```
+
+GitHub Actions runs the Windows suite, macOS Python and native syntax checks,
+shared safe-server tests, and a Python 3.14 compatibility job. CI never opens a
+public tunnel or installs desktop integrations.
+
+## License
+
+Quick Tunnel Review Share is licensed under the
+[MIT License](LICENSE) (`SPDX-License-Identifier: MIT`).
