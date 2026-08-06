@@ -1,24 +1,49 @@
 # Quick-Tunnel Scanner Benchmark
 
-Purpose: compare current filtering pipeline against future hybrid risk-based scanner designs.
+This suite compares the current macOS production scanner with a benchmark-only
+single-pass candidate.
 
-Metrics:
+The production baseline performs inventory hashing and then rereads eligible
+text files for secret detection. The candidate preserves the same exclusions,
+stable-file checks, encodings, and regular expressions while computing SHA-256
+and secret detection during one file read.
 
-- scan throughput (MB/s, files/s)
-- startup latency
-- total scan latency
-- false positive rate
-- false negative rate
-- peak memory usage
+## Metrics
 
-Rules:
+- logical scan throughput in MB/s
+- median and p95 scan latency
+- estimated physical bytes read
+- false-positive rate
+- false-negative rate
+- repeated-run detection stability
 
-- Benchmark changes must not alter production scanner behavior.
-- Replacement requires evidence that security accuracy is not degraded.
+## Safety gates
 
-Workflow:
+The benchmark does not change production behavior. A candidate is eligible for
+a production port only when:
 
-1. Generate reproducible corpus.
-2. Run baseline scanner measurement.
-3. Run candidate scanner measurement.
-4. Compare reports.
+1. detected paths and inventory semantics match the production baseline;
+2. false positives and false negatives do not increase;
+3. results remain stable across repeated runs; and
+4. median latency improves by at least 1.15x.
+
+The original 3x improvement goal remains reported as a stretch target; it is
+not assumed in advance.
+
+## Reproduce locally
+
+```bash
+python -m benchmark.corpus.generate_corpus \
+  --safe-files 3000 \
+  --secret-files 120 \
+  --payload-bytes 16384
+python -m benchmark.runner --repeats 7 --warmups 1
+```
+
+Outputs:
+
+- `benchmark/reports/benchmark-result.json`
+- `benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md`
+
+The corpus contains only deterministic synthetic credential-shaped fixtures.
+It does not contain live secrets.
