@@ -31,11 +31,11 @@ jobs:
       - name: Run v6 security regression tests
         run: python -m unittest -v benchmark.test_pipeline_v6_security
 
-  benchmark-v6:
-    name: benchmark-v6 (${{ matrix.profile }})
+  benchmark-v6-confirm:
+    name: benchmark-v6-confirm (${{ matrix.profile }})
     needs: v6-security
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -44,17 +44,17 @@ jobs:
             safe_files: 3000
             secret_files: 120
             payload_bytes: 16384
-            repeats: 3
+            repeats: 5
           - profile: file-heavy
             safe_files: 20000
             secret_files: 200
             payload_bytes: 1024
-            repeats: 3
+            repeats: 5
           - profile: byte-heavy
             safe_files: 1200
             secret_files: 80
             payload_bytes: 262144
-            repeats: 2
+            repeats: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -74,27 +74,27 @@ jobs:
           --safe-files ${{ matrix.safe_files }}
           --secret-files ${{ matrix.secret_files }}
           --payload-bytes ${{ matrix.payload_bytes }}
-      - name: Run snapshot pipeline v6 benchmark
+      - name: Run v6 confirmation benchmark
         run: >-
           python -m benchmark.runner_v6
           --repeats ${{ matrix.repeats }}
-          --warmups 1
-          --json-output benchmark/reports/pipeline-v6-${{ matrix.profile }}.json
-          --markdown-output benchmark/reports/QT-PIPELINE-V6-${{ matrix.profile }}.md
+          --warmups 2
+          --json-output benchmark/reports/pipeline-v6-confirm-${{ matrix.profile }}.json
+          --markdown-output benchmark/reports/QT-PIPELINE-V6-CONFIRM-${{ matrix.profile }}.md
       - name: Publish Markdown summary
         if: always()
         shell: bash
         run: |
-          report="benchmark/reports/QT-PIPELINE-V6-${{ matrix.profile }}.md"
+          report="benchmark/reports/QT-PIPELINE-V6-CONFIRM-${{ matrix.profile }}.md"
           if [[ -f "$report" ]]; then
-            echo "## Profile: ${{ matrix.profile }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "## Confirmation profile: ${{ matrix.profile }}" >> "$GITHUB_STEP_SUMMARY"
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - name: Upload benchmark report
+      - name: Upload confirmation report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pipeline-v6-${{ matrix.profile }}
+          name: pipeline-v6-confirm-${{ matrix.profile }}
           path: benchmark/reports/
           if-no-files-found: error
           retention-days: 14
