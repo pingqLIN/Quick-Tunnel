@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  v5-security:
-    name: v5 security model adversarial tests
+  v6-security:
+    name: v6 no-fsync security regression tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,19 +21,19 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
-      - name: Validate v5 syntax
+      - name: Validate v6 syntax
         run: >-
           python -m py_compile
-          benchmark/runner_v5.py
-          benchmark/test_pipeline_v5_security.py
+          benchmark/runner_v6.py
+          benchmark/test_pipeline_v6_security.py
           benchmark/scanners/pipeline_v4.py
-          benchmark/scanners/pipeline_v5.py
-      - name: Run adversarial v5 security tests
-        run: python -m unittest -v benchmark.test_pipeline_v5_security
+          benchmark/scanners/pipeline_v6.py
+      - name: Run v6 security regression tests
+        run: python -m unittest -v benchmark.test_pipeline_v6_security
 
-  benchmark-v5:
-    name: benchmark-v5 (${{ matrix.profile }})
-    needs: v5-security
+  benchmark-v6:
+    name: benchmark-v6 (${{ matrix.profile }})
+    needs: v6-security
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -63,29 +63,29 @@ jobs:
       - name: Validate benchmark syntax
         run: >-
           python -m py_compile
-          benchmark/runner_v5.py
+          benchmark/runner_v6.py
           benchmark/corpus/generate_corpus.py
           benchmark/scanners/baseline.py
           benchmark/scanners/pipeline_v4.py
-          benchmark/scanners/pipeline_v5.py
+          benchmark/scanners/pipeline_v6.py
       - name: Generate deterministic corpus
         run: >-
           python -m benchmark.corpus.generate_corpus
           --safe-files ${{ matrix.safe_files }}
           --secret-files ${{ matrix.secret_files }}
           --payload-bytes ${{ matrix.payload_bytes }}
-      - name: Run snapshot pipeline v5 benchmark
+      - name: Run snapshot pipeline v6 benchmark
         run: >-
-          python -m benchmark.runner_v5
+          python -m benchmark.runner_v6
           --repeats ${{ matrix.repeats }}
           --warmups 1
-          --json-output benchmark/reports/pipeline-v5-${{ matrix.profile }}.json
-          --markdown-output benchmark/reports/QT-PIPELINE-V5-${{ matrix.profile }}.md
+          --json-output benchmark/reports/pipeline-v6-${{ matrix.profile }}.json
+          --markdown-output benchmark/reports/QT-PIPELINE-V6-${{ matrix.profile }}.md
       - name: Publish Markdown summary
         if: always()
         shell: bash
         run: |
-          report="benchmark/reports/QT-PIPELINE-V5-${{ matrix.profile }}.md"
+          report="benchmark/reports/QT-PIPELINE-V6-${{ matrix.profile }}.md"
           if [[ -f "$report" ]]; then
             echo "## Profile: ${{ matrix.profile }}" >> "$GITHUB_STEP_SUMMARY"
             cat "$report" >> "$GITHUB_STEP_SUMMARY"
@@ -94,7 +94,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pipeline-v5-${{ matrix.profile }}
+          name: pipeline-v6-${{ matrix.profile }}
           path: benchmark/reports/
           if-no-files-found: error
           retention-days: 14
