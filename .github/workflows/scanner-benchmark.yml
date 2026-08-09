@@ -1,0 +1,52 @@
+name: scanner-benchmark
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "benchmark/**"
+      - "macos/share-codex-review.py"
+      - ".github/workflows/scanner-benchmark.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+      - name: Validate benchmark syntax
+        run: >-
+          python -m py_compile
+          benchmark/runner.py
+          benchmark/corpus/generate_corpus.py
+          benchmark/scanners/baseline.py
+          benchmark/scanners/hybrid.py
+      - name: Generate deterministic corpus
+        run: >-
+          python -m benchmark.corpus.generate_corpus
+          --safe-files 3000
+          --secret-files 120
+          --payload-bytes 16384
+      - name: Run scanner benchmark
+        run: python -m benchmark.runner --repeats 7 --warmups 1
+      - name: Publish Markdown summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md ]]; then
+            cat benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scanner-benchmark-report
+          path: benchmark/reports/
+          if-no-files-found: error
+          retention-days: 14

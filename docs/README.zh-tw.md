@@ -3,6 +3,7 @@
 [英文權威版本](README.md)
 
 - [威脅模型](THREAT_MODEL.zh-tw.md)
+- [分享與篩選矩陣](SHARING_MATRIX.zh-tw.md)
 - [測試與驗證](TESTING.zh-tw.md)
 - [發布政策](RELEASES.zh-tw.md)
 - [GitHub 儲存庫設定](GITHUB_SETTINGS.zh-tw.md)

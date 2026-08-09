@@ -21,3 +21,5 @@ htmlcov/
 *.tmp
 .DS_Store
 Thumbs.db
+benchmark/corpus/generated/
+benchmark/reports/
