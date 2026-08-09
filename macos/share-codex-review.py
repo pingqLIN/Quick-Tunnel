@@ -549,8 +549,8 @@ def copy_inventory_entry(
                     while chunk := source_file.read(1024 * 1024):
                         destination_file.write(chunk)
                         digest.update(chunk)
+                    # The review snapshot is ephemeral; flush Python buffers without forcing disk durability.
                     destination_file.flush()
-                    os.fsync(destination_file.fileno())
 
             after = os.fstat(file_descriptor)
             stable_fields = (

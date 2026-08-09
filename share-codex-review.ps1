@@ -326,7 +326,8 @@ function Copy-InventoryEntry {
             [System.IO.FileShare]::None
         )
         $sourceStream.CopyTo($destinationStream)
-        $destinationStream.Flush($true)
+        # The review snapshot is ephemeral; flush managed buffers without forcing disk durability.
+        $destinationStream.Flush()
         if ($destinationStream.Length -ne $File.Length) {
             throw "Staged file length mismatch: $($File.RelativePath)"
         }

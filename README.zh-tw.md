@@ -6,7 +6,13 @@ HTTP 伺服器直接提供。
 
 [英文權威版本](README.md)
 
-![原創的大頭鼴鼠守護者在發光的暫時審查隧道入口開啟同意閘門，同時抱著封存快照膠囊；右側洞穴內有床、書架與浴缸。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+![戴著墨鏡的鼴鼠吉祥物手持審查快照膠囊與白手杖，穿過發光的暫時審查隧道，通往設有床、書架與浴缸的家具洞穴。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+
+> 先在本機篩選，再以明確同意安全分享，專注於快速審查。
+
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](#系統需求)
+[![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Event schema v1](https://img.shields.io/badge/Event%20schema-v1-65a30d)](docs/THREAT_MODEL.zh-tw.md#機器可讀輸出)
 
 ## 專案狀態
 
@@ -55,6 +61,9 @@ Quick Tunnel 端點未經身分驗證且只會暫時存在。程序執行期間�
 ```
 
 預設公開時效為 30 分鐘。可用 `-DurationMinutes` 調整，或按 Enter 提前停止。
+
+請參閱[分享與篩選矩陣](docs/SHARING_MATRIX.zh-tw.md)，選擇分享模式，並了解
+預設篩選能保護與不能保護的範圍。
 
 Windows 常用選項：
 
