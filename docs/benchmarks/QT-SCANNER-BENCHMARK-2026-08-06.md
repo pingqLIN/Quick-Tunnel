@@ -4,8 +4,8 @@
 
 **Keep the current production scanner.**
 
-The benchmark infrastructure is suitable for merging, but neither tested
-candidate produced a meaningful latency improvement. Production scanner files
+The benchmark infrastructure is suitable for merging, but the tested candidate
+did not produce a meaningful latency improvement. Production scanner files
 remain unchanged.
 
 ## Scope
@@ -36,33 +36,13 @@ Method:
 
 ## Results
 
-### Candidate 1 — fused hashing and secret scan
-
-This candidate read each eligible text file once and performed SHA-256 hashing
-and secret detection in the same pass.
-
-| Metric | Production baseline | Candidate 1 |
-| --- | ---: | ---: |
-| Median latency | 4.609265 s | 4.552349 s |
-| p95 latency | 4.675282 s | 4.585833 s |
-| Logical throughput | 10.61 MB/s | 10.74 MB/s |
-| Estimated bytes read | 102,529,398 | 51,272,891 |
-| False positives | 0 | 0 |
-| False negatives | 0 | 0 |
-
-- Relative speed: **1.013×**
-- Estimated I/O reduction: **50.0%**
-- Semantic parity: **passed**
-- 1.15× meaningful-improvement gate: **failed**
-- 3× stretch target: **failed**
-
-### Candidate 2 — fused pass, combined regex, reduced sorting
+### Single-pass candidate — fused pass, combined regex, reduced sorting
 
 This candidate additionally replaced seven sequential regex searches with one
 combined expression and removed redundant per-directory sorting while keeping
 the final output order deterministic.
 
-| Metric | Production baseline | Candidate 2 |
+| Metric | Production baseline | Single-pass candidate |
 | --- | ---: | ---: |
 | Median latency | 5.046601 s | 5.207034 s |
 | p95 latency | 5.054957 s | 5.315498 s |
@@ -91,7 +71,7 @@ latency. For this many-small-file workload, the dominant costs are likely:
 - per-file SHA-256 setup and hashing;
 - Python object and function-call overhead.
 
-The second candidate shows that combining regular expressions and removing one
+The tested candidate shows that combining regular expressions and removing one
 sorting layer are not useful optimizations for this workload. A risk-ranked or
 selective deep scan was deliberately not adopted because skipping content scans
 would create a new false-negative path.
@@ -117,7 +97,7 @@ would create a new false-negative path.
 
 ## Evidence
 
-- Pull request: #8
+- Pull request: #9
 - Benchmark workflow run 1: successful
 - Benchmark workflow run 2: successful after retrying a GitHub Actions service
   error that occurred before repository checkout

@@ -8,7 +8,7 @@ import json
 import time
 from pathlib import Path
 
-from hybrid import scan_path
+from .hybrid import scan_path
 
 
 def main() -> None:
@@ -23,10 +23,11 @@ def main() -> None:
 
     result["duration_seconds"] = elapsed
     result["throughput_mb_s"] = (
-        result.get("bytes_scanned", 0) / 1024 / 1024 / elapsed
+        result.get("logical_bytes", 0) / 1024 / 1024 / elapsed
         if elapsed else 0
     )
 
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 

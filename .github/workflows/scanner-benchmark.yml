@@ -30,6 +30,9 @@ jobs:
           benchmark/corpus/generate_corpus.py
           benchmark/scanners/baseline.py
           benchmark/scanners/hybrid.py
+          benchmark/scanners/run_hybrid.py
+          benchmark/run_matrix.py
+          benchmark/run_report.py
       - name: Generate deterministic corpus
         run: >-
           python -m benchmark.corpus.generate_corpus

@@ -1,47 +1,63 @@
 #!/usr/bin/env python3
-"""Run the Quick-Tunnel scanner benchmark matrix.
+"""Run the canonical Quick-Tunnel benchmark through a subprocess.
 
-This runner keeps baseline and hybrid measurements comparable by using the
-same generated corpus and emitting a single JSON comparison artifact.
+The canonical ``benchmark.runner`` owns corpus comparison and report schema.
+This wrapper remains useful for automation that needs a subprocess boundary.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 
-def run_step(label: str, command: list[str]) -> dict[str, object]:
-    started = time.perf_counter()
-    completed = subprocess.run(command, capture_output=True, text=True)
-    elapsed = time.perf_counter() - started
-    return {
-        "label": label,
-        "command": command,
-        "elapsed_seconds": round(elapsed, 6),
-        "returncode": completed.returncode,
-        "stdout": completed.stdout[-2000:],
-        "stderr": completed.stderr[-2000:],
-    }
-
-
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--output", type=Path, default=Path("benchmark/reports/comparison.json"))
+    parser.add_argument(
+        "--corpus",
+        type=Path,
+        default=Path("benchmark/corpus/generated"),
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("benchmark/corpus/generated/manifest.json"),
+    )
+    parser.add_argument("--repeats", type=int, default=7)
+    parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("benchmark/reports/benchmark-result.json"),
+    )
+    parser.add_argument(
+        "--markdown-output",
+        type=Path,
+        default=Path("benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md"),
+    )
     args = parser.parse_args()
 
-    results = [
-        run_step("baseline", [sys.executable, "-m", "benchmark.scanners.run_baseline"]),
-        run_step("hybrid", [sys.executable, "-m", "benchmark.scanners.run_hybrid"]),
+    command = [
+        sys.executable,
+        "-m",
+        "benchmark.runner",
+        "--corpus",
+        str(args.corpus),
+        "--manifest",
+        str(args.manifest),
+        "--repeats",
+        str(args.repeats),
+        "--warmups",
+        str(args.warmups),
+        "--json-output",
+        str(args.output),
+        "--markdown-output",
+        str(args.markdown_output),
     ]
-
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps({"schema_version": 1, "results": results}, indent=2), encoding="utf-8")
+    return subprocess.run(command, check=False).returncode
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

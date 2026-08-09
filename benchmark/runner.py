@@ -99,6 +99,11 @@ def run_benchmark(
     repeats: int,
     warmups: int,
 ) -> dict[str, Any]:
+    if repeats < 1:
+        raise ValueError("repeats must be at least 1")
+    if warmups < 0:
+        raise ValueError("warmups must be zero or greater")
+
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     labels = {
         str(path): bool(value)
@@ -340,6 +345,10 @@ def main() -> int:
         default=Path("benchmark/reports/QT-SCANNER-BENCHMARK-REPORT.md"),
     )
     args = parser.parse_args()
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
+    if args.warmups < 0:
+        parser.error("--warmups must be zero or greater")
 
     report = run_benchmark(
         args.corpus,
