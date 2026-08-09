@@ -15,7 +15,8 @@ Tunnel. The original source directory is never served directly.
 - Conservative secret scanning and exclusion rules before public sharing.
 - A loopback-only local safe server with inert MIME handling, restrictive
   security headers, and path confinement.
-- Explicit `SHARE` approval before a public tunnel opens.
+- Interactive `SHARE` confirmation, or prior explicit authorization through
+  `-Yes`/`--yes`, before a public tunnel opens.
 - Bounded retry diagnostics for transient Cloudflare Quick Tunnel failures.
 - Versioned NDJSON lifecycle output via Windows `-Json` and macOS `--json`.
 - Cross-platform test coverage and GitHub Actions checks.
