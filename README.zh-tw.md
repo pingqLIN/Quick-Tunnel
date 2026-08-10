@@ -50,7 +50,7 @@
 | Windows | PowerShell 7；Python 3.9 以上 | `#requires` 與執行期 Python 檢查 | 2026-07-19 使用 PowerShell 7.6.3、Python 3.14.6 |
 | macOS | macOS 14 以上 Homebrew 路徑；Python 3.9 以上 | 包裝程式與 Finder 的 `doctor` 檢查 Python 3.9 以上 | 2026-07-19 使用 macOS 15.7.7 x86_64、Python 3.9.6 |
 | `cloudflared` | 仍在 Cloudflare 一年支援期限內的版本 | 確認執行檔存在；Finder doctor 也會回報版本 | macOS VM 使用 2026.6.1，Windows 使用 2026.7.1 |
-| `qrencode` | 選用 | 不會強制要求 | 4.1.1 in the macOS VM and 2026.7.1 on Windows |
+| `qrencode` | 選用 | 不會強制要求 | macOS VM 使用 4.1.1 |
 
 本專案不會虛構固定的 `cloudflared` 最低版本。Cloudflare 公布的版本支援期為
 一年；程式只強制檢查實際使用的 CLI 能力。請讓 `cloudflared` 保持在支援
