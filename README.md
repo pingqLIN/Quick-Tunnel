@@ -1,10 +1,10 @@
 # Quick Tunnel Review Share
 
-Quick Tunnel Review Share creates a temporary, filtered snapshot of a local
-folder and publishes it through a Cloudflare Quick Tunnel for short-lived code
-review. The source folder is never served directly.
+Create a temporary, filtered snapshot of a local folder and publish it through a
+Cloudflare Quick Tunnel for short-lived code review. The source folder is never
+served directly.
 
-[Traditional Chinese reference](README.zh-tw.md)
+[繁體中文版本](README.zh-tw.md)
 
 ![Quick-Tunnel mole mascot guiding a review capsule through a glowing temporary review tunnel inside the private Mole HQ.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg)
 
@@ -14,18 +14,36 @@ review. The source folder is never served directly.
 [![License MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Event schema v1](https://img.shields.io/badge/Event%20schema-v1-65a30d)](docs/THREAT_MODEL.md#machine-readable-output)
 
-## Status
+---
 
-The first tagged release `v0.1.0` is pending. CI must pass and publication must
-be explicitly authorized before the tag is created. Until then, the latest
-commit on `main` is the supported line; confirm the exact revision and GitHub
-Actions checks before publishing or sharing a release candidate.
+## Table of Contents
 
-Project documentation: [documentation index](docs/README.md),
-[threat model](docs/THREAT_MODEL.md),
-[Agent integration](docs/AGENT_INTEGRATION.md),
-[security policy](SECURITY.md), [contributing guide](CONTRIBUTING.md), and
-[changelog](CHANGELOG.md).
+- [Project Status](#project-status)
+- [Requirements](#requirements)
+- [Before You Share](#before-you-share)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+  - [Windows](#windows)
+  - [macOS](#macos)
+- [Desktop Integration](#desktop-integration)
+  - [Windows Explorer Context Menu](#windows-explorer-context-menu)
+  - [macOS Finder Quick Action](#macos-finder-quick-action)
+- [Machine-Readable Lifecycle](#machine-readable-lifecycle)
+- [Safety Model](#safety-model)
+- [Quick Tunnel Lifecycle](#quick-tunnel-lifecycle)
+- [Developer Verification](#developer-verification)
+- [Documentation](#documentation)
+- [License](#license)
+
+---
+
+## Project Status
+
+No tagged release exists yet. Until the first release, the latest commit on
+`main` is the supported line. Confirm the exact revision and GitHub Actions
+checks before publishing or sharing a release candidate.
+
+---
 
 ## Requirements
 
@@ -45,35 +63,62 @@ Automator, AppleScript, and `plutil`.
 See the [macOS guide](macos/README.md) for Finder Quick Action installation,
 feature parity, and verification.
 
-## Before you share
+---
 
-Quick Tunnel endpoints are unauthenticated and temporary. Anyone who obtains
-the generated URL can access the filtered snapshot while the process is live.
-Do not use this project for credentials, regulated data, or other high-
-sensitivity material. Before public mode, inspect the selected folder, run
-`-ValidateOnly`, and add project-specific exclusions with `-AdditionalExclude`.
-Use `-Yes` only inside an already approved workflow.
+## Before You Share
 
-## Usage
+> [!WARNING]
+> Quick Tunnel endpoints are **unauthenticated and temporary**. Anyone who
+> obtains the generated URL can access the filtered snapshot while the process
+> is live. Do not use this project for credentials, regulated data, or other
+> high-sensitivity material.
+
+Before opening a public tunnel:
+
+1. Inspect the selected folder carefully.
+2. Run `-ValidateOnly` to verify the filtered snapshot locally.
+3. Add project-specific exclusions with `-AdditionalExclude`.
+4. Use `-Yes` only inside an already approved workflow.
+
+Use the [sharing and filtering matrix](docs/SHARING_MATRIX.md) to understand
+what the default filter does—and does not—protect.
+
+---
+
+## Quick Start
+
+**Windows** — share a folder for 30 minutes:
 
 ```powershell
 .\share-codex-review.ps1 "D:\Projects\MyProject"
 ```
 
-Use `-ValidateOnly` to build and verify the filtered local snapshot without
-opening a public tunnel:
+**macOS** — share a folder for 30 minutes:
+
+```zsh
+python3 ./macos/share-codex-review.py "/path/to/MyProject"
+```
+
+Validate locally without opening a public tunnel:
 
 ```powershell
+# Windows
 .\share-codex-review.ps1 "D:\Projects\MyProject" -ValidateOnly
 ```
 
-The default public lifetime is 30 minutes. Change it with
-`-DurationMinutes`, or press Enter to stop early.
+```zsh
+# macOS
+python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
+```
 
-Use the [sharing and filtering matrix](docs/SHARING_MATRIX.md) to choose a
-sharing mode and understand what the default filter does—and does not—protect.
+---
 
-Common Windows options:
+## Usage
+
+### Windows
+
+The default public lifetime is 30 minutes. Change it with `-DurationMinutes`,
+or press **Enter** to stop early.
 
 | Purpose | Option |
 | --- | --- |
@@ -87,40 +132,31 @@ Common Windows options:
 | Change retry base delay | `-QuickTunnelRetryBaseSeconds 5` |
 | Emit versioned NDJSON | `-Json` |
 
-`-Yes` creates an unauthenticated public endpoint without the interactive
-confirmation. Use it only inside an already approved workflow.
+> [!CAUTION]
+> `-Yes` creates an unauthenticated public endpoint without the interactive
+> confirmation. Use it only inside an already approved workflow.
 
-On macOS:
+### macOS
 
-~~~zsh
+```zsh
 python3 ./macos/share-codex-review.py "/path/to/MyProject"
-~~~
+```
 
-Build and verify the filtered snapshot without opening a public tunnel:
+Validate only (no public tunnel):
 
-~~~zsh
+```zsh
 python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
-~~~
+```
 
 <p align="center">
   <img src="docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg" width="880" alt="Quick-Tunnel mole mascot emerging through an outdoor temporary tunnel gate into the wider world." />
 </p>
 
-## Machine-readable lifecycle
+---
 
-Use `-Json` on Windows or `--json` on macOS for versioned NDJSON lifecycle
-events. Validate-only emits `validated` and `cleanup`; public mode emits
-`public_ready` while the URL is live and `cleanup` after processes and staging
-are removed. Errors emit `error` and return a nonzero exit code.
+## Desktop Integration
 
-JSON public mode requires `-Yes` or `--yes` so stdout cannot block on a prompt.
-The version 1 fields are `schema_version`, `event`, `mode`, `public_url`,
-`expires_at`, `server_pid`, `tunnel_pid`, `staging_root`, and `error`. The
-explicit JSON option permits disclosure of the local `staging_root`; do not
-forward that field unnecessarily. See the
-[Agent integration contract](docs/AGENT_INTEGRATION.md).
-
-## Windows Explorer context menu
+### Windows Explorer Context Menu
 
 Double-click `context-menu-setup.cmd`, choose **Install**, and type `INSTALL`.
 The command is installed for the current Windows user only. On Windows 11 it
@@ -129,32 +165,56 @@ may appear under **Show more options**. The installed entry is labelled
 
 ![Windows Explorer context menu showing the Make Q-Tunnel entry](docs/assets/readme/make-q-tunnel-context-menu.png)
 
-To remove it:
+To remove:
 
 ```powershell
 .\manage-context-menu.ps1 -Action Uninstall
 ```
 
-## macOS Finder Quick Action
+### macOS Finder Quick Action
 
 Install the per-user Finder Quick Action:
 
-~~~zsh
+```zsh
 /bin/zsh ./macos/manage-finder-quick-action.sh install
-~~~
+```
 
 Run the non-mutating compatibility and version check first, or choose
 **Run doctor** from `finder-quick-action-setup.command`:
 
-~~~zsh
+```zsh
 /bin/zsh ./macos/manage-finder-quick-action.sh doctor
-~~~
+```
 
 Select one folder in Finder, then choose **Quick Actions > Make Q-Tunnel**.
-Removal is recoverable: installed files are moved into sibling `.del`
-folders instead of being permanently erased.
+Removal is recoverable: installed files are moved into sibling `.del` folders
+instead of being permanently erased.
 
-## Safety model
+---
+
+## Machine-Readable Lifecycle
+
+Use `-Json` on Windows or `--json` on macOS for versioned NDJSON lifecycle
+events.
+
+| Mode | Events emitted |
+| --- | --- |
+| Validate-only | `validated`, `cleanup` |
+| Public mode | `public_ready` (while URL is live), `cleanup` |
+| Error | `error` (nonzero exit code) |
+
+JSON public mode requires `-Yes` or `--yes` so stdout cannot block on a prompt.
+
+**Version 1 fields:** `schema_version`, `event`, `mode`, `public_url`,
+`expires_at`, `server_pid`, `tunnel_pid`, `staging_root`, `error`.
+
+The explicit JSON option permits disclosure of the local `staging_root`; do not
+forward that field unnecessarily. See the
+[Agent integration contract](docs/AGENT_INTEGRATION.md).
+
+---
+
+## Safety Model
 
 - Copies permitted files into an isolated temporary staging directory.
 - Excludes common dependency, VCS, environment, credential, and key paths.
@@ -166,39 +226,53 @@ folders instead of being permanently erased.
 - Requires explicit `SHARE` confirmation unless `-Yes` is supplied.
 - Stops the local server and tunnel and removes staging files on exit.
 
-The secret scan is intentionally conservative and cannot guarantee that every
-credential or private datum has been detected. Review the selected folder and
-use `-AdditionalExclude` for project-specific private paths before sharing.
-It scans only configured text extensions whose staged size is at most 2 MiB;
-larger or unknown-format files may still be copied when they are under the
-separate copy-size limit. Remote inert rendering also does not make a downloaded
-file safe to execute.
+**Limitations:** The secret scan is intentionally conservative and cannot
+guarantee that every credential or private datum has been detected. It scans
+only configured text extensions whose staged size is at most 2 MiB; larger or
+unknown-format files may still be copied when they are under the separate
+copy-size limit. Remote inert rendering also does not make a downloaded file
+safe to execute.
 
 Cleanup is guaranteed for normal exit and handled failures. Force-killing the
 process, terminating the host, or an operating-system crash can leave temporary
 files behind. Follow the [threat model](docs/THREAT_MODEL.md) for recovery and
 residual-risk guidance.
 
-## Quick Tunnel lifecycle
+---
+
+## Quick Tunnel Lifecycle
 
 The Quick Tunnel is created only after local validation and explicit approval.
 The terminal displays the public URL, process IDs, verification result, and
 scheduled expiration time. When the lifetime expires, the tunnel is stopped and
 temporary files are removed. Context-menu launches keep the completion message
-visible until acknowledged. Transient Cloudflare-side `500/1101` Quick Tunnel
-creation failures are retried up to three times with exponential backoff;
-configuration errors and rate-limit responses are not retried.
+visible until acknowledged.
 
-Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
-Anyone with the generated URL can access the filtered snapshot while the
-process is running.
+Transient Cloudflare-side `500/1101` Quick Tunnel creation failures are retried
+up to three times with exponential backoff; configuration errors and rate-limit
+responses are not retried.
 
-## Developer verification
+<p align="center">
+  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="880" alt="Quick-Tunnel mole mascot welcoming a visitor arriving through a temporary tunnel into the private home base." />
+</p>
+
+> [!NOTE]
+> Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
+> Anyone with the generated URL can access the filtered snapshot while the
+> process is running.
+
+---
+
+## Developer Verification
+
+**Windows:**
 
 ```powershell
 ./windows/tests/test-share-codex-review.ps1
 python -m unittest discover -s tests -v
 ```
+
+**macOS:**
 
 ```zsh
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s macos/tests -v
@@ -208,6 +282,23 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 GitHub Actions runs the Windows suite, macOS Python and native syntax checks,
 shared safe-server tests, and a Python 3.14 compatibility job. CI never opens a
 public tunnel or installs desktop integrations.
+
+---
+
+## Documentation
+
+| Resource | Link |
+| --- | --- |
+| Documentation index | [docs/README.md](docs/README.md) |
+| Threat model | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) |
+| Sharing and filtering matrix | [docs/SHARING_MATRIX.md](docs/SHARING_MATRIX.md) |
+| Agent integration contract | [docs/AGENT_INTEGRATION.md](docs/AGENT_INTEGRATION.md) |
+| macOS guide | [macos/README.md](macos/README.md) |
+| Security policy | [SECURITY.md](SECURITY.md) |
+| Contributing guide | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Changelog | [CHANGELOG.md](CHANGELOG.md) |
+
+---
 
 ## License
 
