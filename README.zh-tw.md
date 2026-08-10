@@ -174,10 +174,6 @@ URL、程序 PID、公開驗證結果與預定到期時間。時效到期後會�
 端暫時性的 `500/1101` Quick Tunnel 建立錯誤，最多會以指數退避重試三次；
 設定錯誤與速率限制回覆不會自動重試。
 
-<p align="center">
-  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="880" alt="Quick-Tunnel 鼴鼠吉祥物透過暫時隧道迎接訪客進入私人基地。" />
-</p>
-
 Cloudflare Quick Tunnel 是未經身分驗證的暫時性開發端點。程序執行期間，
 任何取得 URL 的人都能存取過濾後的快照。
 
