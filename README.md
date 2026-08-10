@@ -103,7 +103,7 @@ python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
 ~~~
 
 <p align="center">
-  <img src="docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg" width="86%" alt="Quick-Tunnel mole mascot emerging through an outdoor temporary tunnel gate into the wider world." />
+  <img src="docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg" width="880" alt="Quick-Tunnel mole mascot emerging through an outdoor temporary tunnel gate into the wider world." />
 </p>
 
 ## Machine-readable lifecycle
@@ -122,7 +122,7 @@ forward that field unnecessarily. See the
 
 ## Windows Explorer context menu
 
-Double-click `context-menu-setup.cmd`, choose Install, and type `INSTALL`.
+Double-click `context-menu-setup.cmd`, choose **Install**, and type `INSTALL`.
 The command is installed for the current Windows user only. On Windows 11 it
 may appear under **Show more options**. The installed entry is labelled
 **Make Q-Tunnel**.
@@ -190,7 +190,7 @@ creation failures are retried up to three times with exponential backoff;
 configuration errors and rate-limit responses are not retried.
 
 <p align="center">
-  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="86%" alt="Quick-Tunnel mole mascot welcoming a visitor through a temporary tunnel into the private home base." />
+  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="880" alt="Quick-Tunnel mole mascot welcoming a visitor through a temporary tunnel into the private home base." />
 </p>
 
 Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
