@@ -6,7 +6,7 @@ HTTP 伺服器直接提供。
 
 [英文權威版本](README.md)
 
-![戴著墨鏡的鼴鼠吉祥物手持審查快照膠囊與白手杖，穿過發光的暫時審查隧道，通往設有床、書架與浴缸的家具洞穴。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+![Quick-Tunnel 鼴鼠吉祥物在私人 Mole HQ 中，引導審查膠囊穿過發光的暫時審查隧道。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg)
 
 > 先在本機篩選，再以明確同意安全分享，專注於快速審查。
 
@@ -95,6 +95,10 @@ python3 ./macos/share-codex-review.py "/path/to/MyProject"
 python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
 ~~~
 
+<p align="center">
+  <img src="docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg" width="86%" alt="Quick-Tunnel 鼴鼠吉祥物經由戶外暫時隧道閘門抵達外部世界。" />
+</p>
+
 ## 機器可讀生命週期
 
 Windows 使用 `-Json`，macOS 使用 `--json`，可取得版本化 NDJSON 生命週期
@@ -169,6 +173,10 @@ URL、程序 PID、公開驗證結果與預定到期時間。時效到期後會�
 移除暫存檔；由右鍵選單啟動時，完成提示會保留到使用者確認。Cloudflare
 端暫時性的 `500/1101` Quick Tunnel 建立錯誤，最多會以指數退避重試三次；
 設定錯誤與速率限制回覆不會自動重試。
+
+<p align="center">
+  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="86%" alt="Quick-Tunnel 鼴鼠吉祥物透過暫時隧道迎接訪客進入私人基地。" />
+</p>
 
 Cloudflare Quick Tunnel 是未經身分驗證的暫時性開發端點。程序執行期間，
 任何取得 URL 的人都能存取過濾後的快照。
