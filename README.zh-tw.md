@@ -6,7 +6,7 @@ HTTP 伺服器直接提供。
 
 [英文權威版本](README.md)
 
-![戴著墨鏡的鼴鼠吉祥物手持審查快照膠囊與白手杖，穿過發光的暫時審查隧道，通往設有床、書架與浴缸的家具洞穴。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+![Quick-Tunnel 鼴鼠吉祥物在私人 Mole HQ 中，引導審查膠囊穿過發光的暫時審查隧道。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg)
 
 > 先在本機篩選，再以明確同意安全分享，專注於快速審查。
 
@@ -94,6 +94,10 @@ python3 ./macos/share-codex-review.py "/path/to/MyProject"
 ~~~zsh
 python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
 ~~~
+
+<p align="center">
+  <img src="docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg" width="880" alt="Quick-Tunnel 鼴鼠吉祥物經由戶外暫時隧道閘門抵達外部世界。" />
+</p>
 
 ## 機器可讀生命週期
 
