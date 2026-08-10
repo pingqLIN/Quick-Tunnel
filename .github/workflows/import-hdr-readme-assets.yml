@@ -1,0 +1,55 @@
+name: Import HDR README assets
+
+on:
+  push:
+    paths:
+      - '.github/workflows/import-hdr-readme-assets.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  import-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download verified HDR assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/assets/readme
+
+          curl -L --fail --retry 3 -o docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg 'https://at.adobe.com/VmmNVDrB2L2KBZsM'
+          curl -L --fail --retry 3 -o docs/assets/readme/quick-tunnel-private-home-visit.jpg 'https://at.adobe.com/8QZ5E1BoKPKbML1k'
+          curl -L --fail --retry 3 -o /tmp/quick-tunnel-outdoor.zip 'https://at.adobe.com/aT7Zy5xi0Isnr5nI'
+
+          echo '22a21276f8a67cbd5ba4ec03064783b83facc85242e1f9d8a2e610f58ae32c73  /tmp/quick-tunnel-outdoor.zip' | sha256sum -c -
+
+          first_file="$(unzip -Z1 /tmp/quick-tunnel-outdoor.zip | head -n 1)"
+          unzip -p /tmp/quick-tunnel-outdoor.zip "$first_file" > docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg
+
+          cat > /tmp/expected.sha256 <<'EOF'
+          9836251e451f3f8d3eefff6ccb1e7842862167d5d95a7b04af2408e886fac1a6  docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg
+          00030b04605671edd450b02d4c8e87227a70635fc2912361cbcc02f2c8985e84  docs/assets/readme/quick-tunnel-private-home-visit.jpg
+          17a54b8f58d264de7bff66683546570dec0e3698cf481ddd8108e0fa24ad3b86  docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg
+          EOF
+          sed -i 's/^          //' /tmp/expected.sha256
+          sha256sum -c /tmp/expected.sha256
+
+      - name: Commit HDR assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg \
+                  docs/assets/readme/quick-tunnel-private-home-visit.jpg \
+                  docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg
+          if git diff --cached --quiet; then
+            echo 'No asset changes to commit.'
+            exit 0
+          fi
+          git commit -m 'docs: add HDR README mascot assets'
+          git push origin HEAD:${GITHUB_REF_NAME}
