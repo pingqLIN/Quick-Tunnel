@@ -6,7 +6,7 @@ review. The source folder is never served directly.
 
 [Traditional Chinese reference](README.zh-tw.md)
 
-![Mole mascot wearing sunglasses and carrying a review capsule and white cane through a glowing temporary review tunnel into a furnished cave with a bed, bookshelf, and bathtub.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.png)
+![Quick-Tunnel mole mascot guiding a review capsule through a glowing temporary review tunnel inside the private Mole HQ.](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg)
 
 > Filter locally. Share deliberately. Review safely.
 
@@ -102,6 +102,10 @@ Build and verify the filtered snapshot without opening a public tunnel:
 python3 ./macos/share-codex-review.py "/path/to/MyProject" --validate-only
 ~~~
 
+<p align="center">
+  <img src="docs/assets/readme/quick-tunnel-outdoor-tunnel-gate.jpg" width="86%" alt="Quick-Tunnel mole mascot emerging through an outdoor temporary tunnel gate into the wider world." />
+</p>
+
 ## Machine-readable lifecycle
 
 Use `-Json` on Windows or `--json` on macOS for versioned NDJSON lifecycle
@@ -118,7 +122,7 @@ forward that field unnecessarily. See the
 
 ## Windows Explorer context menu
 
-Double-click `context-menu-setup.cmd`, choose **Install**, and type `INSTALL`.
+Double-click `context-menu-setup.cmd`, choose Install, and type `INSTALL`.
 The command is installed for the current Windows user only. On Windows 11 it
 may appear under **Show more options**. The installed entry is labelled
 **Make Q-Tunnel**.
@@ -147,8 +151,8 @@ Run the non-mutating compatibility and version check first, or choose
 ~~~
 
 Select one folder in Finder, then choose **Quick Actions > Make Q-Tunnel**.
-Removal is recoverable: installed files are moved into sibling
-`.del` folders instead of being permanently erased.
+Removal is recoverable: installed files are moved into sibling `.del`
+folders instead of being permanently erased.
 
 ## Safety model
 
@@ -179,11 +183,15 @@ residual-risk guidance.
 
 The Quick Tunnel is created only after local validation and explicit approval.
 The terminal displays the public URL, process IDs, verification result, and
-scheduled expiration time. When the lifetime expires, the tunnel is stopped
-and temporary files are removed. Context-menu launches keep the completion
-message visible until acknowledged. Transient Cloudflare-side `500/1101`
-Quick Tunnel creation failures are retried up to three times with exponential
-backoff; configuration errors and rate-limit responses are not retried.
+scheduled expiration time. When the lifetime expires, the tunnel is stopped and
+temporary files are removed. Context-menu launches keep the completion message
+visible until acknowledged. Transient Cloudflare-side `500/1101` Quick Tunnel
+creation failures are retried up to three times with exponential backoff;
+configuration errors and rate-limit responses are not retried.
+
+<p align="center">
+  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="86%" alt="Quick-Tunnel mole mascot welcoming a visitor through a temporary tunnel into the private home base." />
+</p>
 
 Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
 Anyone with the generated URL can access the filtered snapshot while the
