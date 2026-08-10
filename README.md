@@ -189,10 +189,6 @@ visible until acknowledged. Transient Cloudflare-side `500/1101` Quick Tunnel
 creation failures are retried up to three times with exponential backoff;
 configuration errors and rate-limit responses are not retried.
 
-<p align="center">
-  <img src="docs/assets/readme/quick-tunnel-private-home-visit.jpg" width="880" alt="Quick-Tunnel mole mascot welcoming a visitor through a temporary tunnel into the private home base." />
-</p>
-
 Cloudflare Quick Tunnels are unauthenticated, temporary development endpoints.
 Anyone with the generated URL can access the filtered snapshot while the
 process is running.
