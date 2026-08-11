@@ -127,12 +127,14 @@ Quick Tunnel 定位為測試與開發用途；Cloudflare 目前限制最多 200 
 | --- | --- | --- | --- | --- |
 | 現有 Quick Tunnel | 不需要 | 無 | 無 | 保留為低敏感度、短時審查的零設定預設模式 |
 | Quick Tunnel + 本機密碼閘門 | 不需要 | 由本機審查伺服器處理共用密碼 | 若實作可透過 HTTP 驗證 header／cookie | 只有在真的需要「共用密碼」時採用的相容方案 |
-| Managed Tunnel + Cloudflare Access | 公開 hostname 需要 Cloudflare 上的有效網域 | Cloudflare 帳號、IdP 或 Email One-Time PIN | Cloudflare Access service token | **建議的受保護模式** |
+| Managed Tunnel + Cloudflare Access | 公開 hostname 需要 Cloudflare 上的有效網域 | Cloudflare IdP（限 Access policy 允許的帳號成員）、其他 IdP 或 Email One-Time PIN | Cloudflare Access service token，並搭配對應的 `Service Auth` policy | **建議的受保護模式** |
 
 若要採 Cloudflare 原生保護機制，建議使用 **Managed Tunnel + Cloudflare Access**
-保護 self-hosted application。Access 會在請求到達來源端之前先套用驗證政策，
-可使用身分供應商登入與 Email One-Time PIN。自動化審查器則可使用 Access
-**service token**（`CF-Access-Client-Id` 與 `CF-Access-Client-Secret`），避免互動式登入。
+保護 self-hosted application。Access 會在請求到達來源端之前先套用驗證政策。
+人員可使用已設定的 IdP（包含將 Cloudflare 作為 IdP，並由 Access policy 限定
+可登入的帳號成員）或 Email One-Time PIN。自動化審查器可使用 Access
+**service token**（`CF-Access-Client-Id` 與 `CF-Access-Client-Secret`）避免互動式登入，
+但 Access application 必須另外建立允許該 token 的 **Service Auth** policy。
 
 Cloudflare 官方資料：
 

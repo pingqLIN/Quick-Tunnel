@@ -136,14 +136,16 @@ separate authentication layer rather than a tunnel flag.
 | --- | --- | --- | --- | --- |
 | Existing Quick Tunnel | Not required | None | None | Keep as the zero-setup default for low-sensitivity, short-lived review |
 | Quick Tunnel + local password gate | Not required | Shared password handled by the local review server | HTTP auth header/cookie if implemented | Possible compatibility mode when a literal shared password is required |
-| Managed Tunnel + Cloudflare Access | Active Cloudflare domain required for a public hostname | Cloudflare account, IdP, or email One-Time PIN | Cloudflare Access service token | Recommended protected mode |
+| Managed Tunnel + Cloudflare Access | Active Cloudflare domain required for a public hostname | Cloudflare IdP for allowed account members, another IdP, or email One-Time PIN | Cloudflare Access service token with a matching `Service Auth` policy | Recommended protected mode |
 
 For a Cloudflare-native protected workflow, use a **managed Tunnel + Cloudflare
 Access** in front of a self-hosted application. Access evaluates every request
-before forwarding it to the origin and supports identity-provider login and
+before forwarding it to the origin. Human access can use a configured identity
+provider — including Cloudflare as an IdP for allowed account members — or
 email One-Time PIN. Automated reviewers can use Access **service tokens**
-(`CF-Access-Client-Id` and `CF-Access-Client-Secret`) instead of an interactive
-login.
+(`CF-Access-Client-Id` and `CF-Access-Client-Secret`) without an interactive
+login, but the Access application must also include a **Service Auth** policy
+that allows that service token.
 
 Official references:
 
