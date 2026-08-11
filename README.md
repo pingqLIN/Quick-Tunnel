@@ -21,7 +21,7 @@ served directly.
 - [Project Status](#project-status)
 - [Requirements](#requirements)
 - [Cloudflare / cloudflared Setup](#cloudflare--cloudflared-setup)
-- [Authenticated Sharing Evaluation](#authenticated-sharing-evaluation)
+- [Protected Access](#protected-access)
 - [Before You Share](#before-you-share)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
@@ -56,11 +56,9 @@ checks before publishing or sharing a release candidate.
 | `cloudflared` | A release still inside Cloudflare's one-year support window | executable presence; Finder doctor also reports the version | 2026.6.1 in the macOS VM and 2026.7.1 on Windows |
 | `qrencode` | Optional | no hard requirement | 4.1.1 in the macOS VM |
 
-There is no invented numeric `cloudflared` minimum: Cloudflare publishes a
-one-year release-support policy, while this project enforces only the CLI
-capabilities it uses. Keep `cloudflared` updated within that support window.
-The Finder path additionally requires built-in zsh, Terminal, Finder,
-Automator, AppleScript, and `plutil`.
+`cloudflared` must be available on `PATH`. Keep it updated to a release that is
+still supported by Cloudflare. The Finder path additionally requires built-in
+zsh, Terminal, Finder, Automator, AppleScript, and `plutil`.
 
 See the [macOS guide](macos/README.md) for Finder Quick Action installation,
 feature parity, and verification.
@@ -125,27 +123,23 @@ authentication layer.
 
 ---
 
-## Authenticated Sharing Evaluation
+## Protected Access
 
-The current Quick Tunnel workflow remains intentionally short-lived and
-**unauthenticated**. A shared static password is not a native TryCloudflare
-Quick Tunnel feature, so password-protected sharing should be treated as a
-separate authentication layer rather than a tunnel flag.
+The Quick Tunnel mode used by this project is **unauthenticated** and does not
+provide a shared-password option. Anyone who has the temporary URL can reach
+the published snapshot while the tunnel is active.
 
-| Mode | Cloudflare account / domain | Human authentication | Machine / agent authentication | Recommendation |
-| --- | --- | --- | --- | --- |
-| Existing Quick Tunnel | Not required | None | None | Keep as the zero-setup default for low-sensitivity, short-lived review |
-| Quick Tunnel + local password gate | Not required | Shared password handled by the local review server | HTTP auth header/cookie if implemented | Possible compatibility mode when a literal shared password is required |
-| Managed Tunnel + Cloudflare Access | Active Cloudflare domain required for a public hostname | Cloudflare IdP for allowed account members, another IdP, or email One-Time PIN | Cloudflare Access service token with a matching `Service Auth` policy | Recommended protected mode |
+For access-controlled sharing, use a **managed Cloudflare Tunnel + Cloudflare
+Access**. A public hostname requires a domain managed in Cloudflare. Human users
+can authenticate through a configured identity provider or Email One-Time PIN.
+Automated reviewers can use Cloudflare Access **service tokens**
+(`CF-Access-Client-Id` and `CF-Access-Client-Secret`); the Access application
+must include a matching **Service Auth** policy that allows the token.
 
-For a Cloudflare-native protected workflow, use a **managed Tunnel + Cloudflare
-Access** in front of a self-hosted application. Access evaluates every request
-before forwarding it to the origin. Human access can use a configured identity
-provider — including Cloudflare as an IdP for allowed account members — or
-email One-Time PIN. Automated reviewers can use Access **service tokens**
-(`CF-Access-Client-Id` and `CF-Access-Client-Secret`) without an interactive
-login, but the Access application must also include a **Service Auth** policy
-that allows that service token.
+| Mode | Authentication | Requirements | Use |
+| --- | --- | --- | --- |
+| Quick Tunnel | None | `cloudflared` | Short-lived, low-sensitivity review |
+| Managed Tunnel + Cloudflare Access | IdP / Email One-Time PIN for people; service token for machines | Cloudflare-managed domain, managed Tunnel, Access application and policies | Access-controlled review |
 
 Official references:
 
@@ -154,13 +148,8 @@ Official references:
 - [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
 - [Authenticate coding agents](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/)
 
-**Implementation recommendation:** retain Quick Tunnel as the default and add a
-future explicit authentication mode, for example `Quick`, `Password`, or
-`Access`. `Password` should be enforced by `safe-review-server.py` without
-putting the password in command-line arguments, logs, JSON events, or the public
-URL. `Access` should use a named/managed tunnel and Cloudflare Access policies;
-service-token secrets should likewise remain outside project output and staged
-review content.
+A local shared-password gate is not part of the supported runtime documented by
+this repository.
 
 ---
 
