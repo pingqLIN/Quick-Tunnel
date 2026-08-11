@@ -156,7 +156,7 @@ Official references:
 
 **Implementation recommendation:** retain Quick Tunnel as the default and add a
 future explicit authentication mode, for example `Quick`, `Password`, or
-`Access`. `Password` should be enforced by the local safe server without
+`Access`. `Password` should be enforced by `safe-review-server.py` without
 putting the password in command-line arguments, logs, JSON events, or the public
 URL. `Access` should use a named/managed tunnel and Cloudflare Access policies;
 service-token secrets should likewise remain outside project output and staged

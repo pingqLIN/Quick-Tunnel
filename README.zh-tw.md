@@ -144,7 +144,7 @@ Cloudflare 官方資料：
 - [Coding Agent 驗證](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/)
 
 **實作建議：** 保留 Quick Tunnel 為預設，再新增明確的驗證模式，例如
-`Quick`、`Password`、`Access`。`Password` 應由本機 safe server 執行，而且密碼
+`Quick`、`Password`、`Access`。`Password` 應由 `safe-review-server.py` 執行，而且密碼
 不得進入 command-line arguments、log、JSON event 或公開 URL。`Access` 則應改走
 named／managed tunnel 與 Cloudflare Access policy；service-token secret 同樣不得
 出現在專案輸出或暫存審查內容中。
