@@ -5,7 +5,7 @@
 
 [English version](README.md)
 
-![Quick-Tunnel 鼴鼠吉祥物在私人 Mole HQ 中，引導審查膠囊通過發光的暫時審查隧道。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg)
+![Quick-Tunnel 鼴鼠吉祥物在私人 Mole HQ 中，引導審查膠囊穿過發光的暫時審查隧道。](docs/assets/readme/quick-tunnel-review-share-mole-mascot-banner.jpg)
 
 > 先在本機篩選，再以明確同意安全分享，專注於快速審查。
 
@@ -19,6 +19,8 @@
 
 - [專案狀態](#專案狀態)
 - [系統需求](#系統需求)
+- [Cloudflare / cloudflared 安裝與使用](#cloudflare--cloudflared-安裝與使用)
+- [具身分驗證的分享模式評估](#具身分驗證的分享模式評估)
 - [分享前注意事項](#分享前注意事項)
 - [快速開始](#快速開始)
 - [使用方式](#使用方式)
@@ -59,6 +61,93 @@ AppleScript 與 `plutil`。
 
 Finder Quick Action 安裝方式、功能對照與驗證說明請參閱
 [macOS 指南](macos/README.zh-tw.md)。
+
+---
+
+## Cloudflare / cloudflared 安裝與使用
+
+Quick Tunnel 透過 Cloudflare 的 `cloudflared` 用戶端，將本機審查伺服器連到
+Cloudflare。專案預設使用 **Quick Tunnels / TryCloudflare**：`cloudflared` 會建立
+隨機的 `*.trycloudflare.com` 網址，再把流量轉送到本機 HTTP 伺服器；這個模式
+不需要先把自己的網域加入 Cloudflare DNS。
+
+Cloudflare 官方資料：
+
+- [`cloudflared` 下載與安裝](https://developers.cloudflare.com/tunnel/downloads/)
+- [Quick Tunnels / TryCloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
+- [建立受管理的 Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/setup/)
+
+### 安裝 `cloudflared`
+
+**Windows（PowerShell）**
+
+Cloudflare 官方下載頁提供 Windows 執行檔與 MSI。若要以指令安裝，可透過
+Windows Package Manager 安裝已發布的 `Cloudflare.cloudflared` 套件：
+
+```powershell
+winget install --id Cloudflare.cloudflared --exact --source winget
+cloudflared --version
+```
+
+若沒有 WinGet，或 WinGet 套件版本落後於 Cloudflare 當前版本，請改用上方
+Cloudflare 官方下載頁提供的 MSI／執行檔。Cloudflare 也特別註明 Windows 的
+`cloudflared` 不會自動更新，需要自行維護版本。
+
+**macOS**
+
+```zsh
+brew install cloudflared
+cloudflared --version
+```
+
+Cloudflare 官方文件以 Homebrew 作為 macOS 的標準安裝方式。
+
+### 最小化 Quick Tunnel 手動測試
+
+如果本機已有 Web server 在 `8080` 埠運作，Cloudflare 官方文件的最小測試為：
+
+```text
+cloudflared tunnel --url http://localhost:8080
+```
+
+`cloudflared` 會輸出暫時性的 `https://<random>.trycloudflare.com` 公開網址。
+Quick Tunnel 定位為測試與開發用途；Cloudflare 目前限制最多 200 個同時進行中的
+請求，而且不支援 Server-Sent Events（SSE）。除非來源端應用程式自行加入
+驗證層，否則 Quick Tunnel 網址本身是公開且未驗證身分的。
+
+---
+
+## 具身分驗證的分享模式評估
+
+目前 Quick Tunnel 流程維持短時效、**未經身分驗證**。TryCloudflare Quick Tunnel
+本身沒有「共用靜態密碼」功能，因此若要做密碼保護，應把它視為獨立的驗證層，
+而不是 Cloudflare Tunnel 的單一參數。
+
+| 模式 | Cloudflare 帳號／網域 | 人員驗證 | 機器／Agent 驗證 | 建議 |
+| --- | --- | --- | --- | --- |
+| 現有 Quick Tunnel | 不需要 | 無 | 無 | 保留為低敏感度、短時審查的零設定預設模式 |
+| Quick Tunnel + 本機密碼閘門 | 不需要 | 由本機審查伺服器處理共用密碼 | 若實作可透過 HTTP 驗證 header／cookie | 只有在真的需要「共用密碼」時採用的相容方案 |
+| Managed Tunnel + Cloudflare Access | 公開 hostname 需要 Cloudflare 上的有效網域 | Cloudflare IdP（限 Access policy 允許的帳號成員）、其他 IdP 或 Email One-Time PIN | Cloudflare Access service token，並搭配對應的 `Service Auth` policy | **建議的受保護模式** |
+
+若要採 Cloudflare 原生保護機制，建議使用 **Managed Tunnel + Cloudflare Access**
+保護 self-hosted application。Access 會在請求到達來源端之前先套用驗證政策。
+人員可使用已設定的 IdP（包含將 Cloudflare 作為 IdP，並由 Access policy 限定
+可登入的帳號成員）或 Email One-Time PIN。自動化審查器可使用 Access
+**service token**（`CF-Access-Client-Id` 與 `CF-Access-Client-Secret`）避免互動式登入，
+但 Access application 必須另外建立允許該 token 的 **Service Auth** policy。
+
+Cloudflare 官方資料：
+
+- [使用 Cloudflare Access 發布 self-hosted application](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+- [One-Time PIN 登入](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
+- [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
+- [Coding Agent 驗證](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/)
+
+**實作建議：** 保留 Quick Tunnel 為預設，再新增明確的驗證模式，例如
+`Quick`、`Password`、`Access`。`Password` 應由 `safe-review-server.py` 執行，而且密碼
+不得進入 command-line arguments、log、JSON event 或公開 URL。`Access` 則應改走
+named／managed tunnel 與 Cloudflare Access policy；service-token secret 同樣不得
+出現在專案輸出或暫存審查內容中。
 
 ---
 
