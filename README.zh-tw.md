@@ -20,7 +20,7 @@
 - [專案狀態](#專案狀態)
 - [系統需求](#系統需求)
 - [Cloudflare / cloudflared 安裝與使用](#cloudflare--cloudflared-安裝與使用)
-- [具身分驗證的分享模式評估](#具身分驗證的分享模式評估)
+- [受保護存取](#受保護存取)
 - [分享前注意事項](#分享前注意事項)
 - [快速開始](#快速開始)
 - [使用方式](#使用方式)
@@ -54,10 +54,9 @@
 | `cloudflared` | 仍在 Cloudflare 一年支援期限內的版本 | 確認執行檔存在；Finder doctor 也會回報版本 | macOS VM 使用 2026.6.1，Windows 使用 2026.7.1 |
 | `qrencode` | 選用 | 不會強制要求 | macOS VM 使用 4.1.1 |
 
-本專案不會虛構固定的 `cloudflared` 最低版本。Cloudflare 公布的版本支援期為
-一年；程式只強制檢查實際使用的 CLI 能力。請讓 `cloudflared` 保持在支援
-期限內。Finder 路徑另外需要系統內建的 zsh、Terminal、Finder、Automator、
-AppleScript 與 `plutil`。
+`cloudflared` 必須可由 `PATH` 直接呼叫，並應維持在 Cloudflare 仍支援的版本。
+Finder 路徑另外需要系統內建的 zsh、Terminal、Finder、Automator、AppleScript
+與 `plutil`。
 
 Finder Quick Action 安裝方式、功能對照與驗證說明請參閱
 [macOS 指南](macos/README.zh-tw.md)。
@@ -117,24 +116,21 @@ Quick Tunnel 定位為測試與開發用途；Cloudflare 目前限制最多 200 
 
 ---
 
-## 具身分驗證的分享模式評估
+## 受保護存取
 
-目前 Quick Tunnel 流程維持短時效、**未經身分驗證**。TryCloudflare Quick Tunnel
-本身沒有「共用靜態密碼」功能，因此若要做密碼保護，應把它視為獨立的驗證層，
-而不是 Cloudflare Tunnel 的單一參數。
+本專案使用的 Quick Tunnel 模式**不含身分驗證**，也沒有提供共用密碼選項。
+通道有效期間，任何取得暫時網址的人都能存取已發布的快照。
 
-| 模式 | Cloudflare 帳號／網域 | 人員驗證 | 機器／Agent 驗證 | 建議 |
-| --- | --- | --- | --- | --- |
-| 現有 Quick Tunnel | 不需要 | 無 | 無 | 保留為低敏感度、短時審查的零設定預設模式 |
-| Quick Tunnel + 本機密碼閘門 | 不需要 | 由本機審查伺服器處理共用密碼 | 若實作可透過 HTTP 驗證 header／cookie | 只有在真的需要「共用密碼」時採用的相容方案 |
-| Managed Tunnel + Cloudflare Access | 公開 hostname 需要 Cloudflare 上的有效網域 | Cloudflare IdP（限 Access policy 允許的帳號成員）、其他 IdP 或 Email One-Time PIN | Cloudflare Access service token，並搭配對應的 `Service Auth` policy | **建議的受保護模式** |
+若需要存取控制，請使用 **Managed Cloudflare Tunnel + Cloudflare Access**。
+公開 hostname 需要由 Cloudflare 管理的網域。人員可透過已設定的身分供應商
+（IdP）或 Email One-Time PIN 驗證；自動化審查器可使用 Cloudflare Access
+**service token**（`CF-Access-Client-Id` 與 `CF-Access-Client-Secret`），且 Access
+application 必須建立允許該 token 的 **Service Auth** policy。
 
-若要採 Cloudflare 原生保護機制，建議使用 **Managed Tunnel + Cloudflare Access**
-保護 self-hosted application。Access 會在請求到達來源端之前先套用驗證政策。
-人員可使用已設定的 IdP（包含將 Cloudflare 作為 IdP，並由 Access policy 限定
-可登入的帳號成員）或 Email One-Time PIN。自動化審查器可使用 Access
-**service token**（`CF-Access-Client-Id` 與 `CF-Access-Client-Secret`）避免互動式登入，
-但 Access application 必須另外建立允許該 token 的 **Service Auth** policy。
+| 模式 | 驗證方式 | 所需條件 | 適用情境 |
+| --- | --- | --- | --- |
+| Quick Tunnel | 無 | `cloudflared` | 短時、低敏感度審查 |
+| Managed Tunnel + Cloudflare Access | 人員使用 IdP／Email One-Time PIN；機器使用 service token | Cloudflare 管理的網域、Managed Tunnel、Access application 與 policy | 需要存取控制的審查 |
 
 Cloudflare 官方資料：
 
@@ -143,11 +139,7 @@ Cloudflare 官方資料：
 - [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
 - [Coding Agent 驗證](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/)
 
-**實作建議：** 保留 Quick Tunnel 為預設，再新增明確的驗證模式，例如
-`Quick`、`Password`、`Access`。`Password` 應由 `safe-review-server.py` 執行，而且密碼
-不得進入 command-line arguments、log、JSON event 或公開 URL。`Access` 則應改走
-named／managed tunnel 與 Cloudflare Access policy；service-token secret 同樣不得
-出現在專案輸出或暫存審查內容中。
+本 repository 的支援功能不包含本機共用密碼閘門。
 
 ---
 
