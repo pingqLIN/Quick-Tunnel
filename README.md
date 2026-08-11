@@ -20,6 +20,8 @@ served directly.
 
 - [Project Status](#project-status)
 - [Requirements](#requirements)
+- [Cloudflare / cloudflared Setup](#cloudflare--cloudflared-setup)
+- [Authenticated Sharing Evaluation](#authenticated-sharing-evaluation)
 - [Before You Share](#before-you-share)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
@@ -62,6 +64,101 @@ Automator, AppleScript, and `plutil`.
 
 See the [macOS guide](macos/README.md) for Finder Quick Action installation,
 feature parity, and verification.
+
+---
+
+## Cloudflare / cloudflared Setup
+
+Quick Tunnel uses Cloudflare's `cloudflared` client to connect the local review
+server to Cloudflare. The project uses **Quick Tunnels / TryCloudflare** by
+default: `cloudflared` creates a random `*.trycloudflare.com` hostname and
+forwards it to the local HTTP server. You do not need to add a domain to
+Cloudflare DNS for this mode.
+
+Official Cloudflare references:
+
+- [`cloudflared` downloads and installation](https://developers.cloudflare.com/tunnel/downloads/)
+- [Quick Tunnels / TryCloudflare](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/trycloudflare/)
+- [Create a managed Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/setup/)
+
+### Install `cloudflared`
+
+**Windows (PowerShell)**
+
+The official Cloudflare download page provides both the Windows executable and
+MSI installer. For a command-line install, Windows Package Manager can install
+the published `Cloudflare.cloudflared` package:
+
+```powershell
+winget install --id Cloudflare.cloudflared --exact --source winget
+cloudflared --version
+```
+
+If WinGet is unavailable or its package is behind the current Cloudflare
+release, use the MSI/executable links on the official Cloudflare download page
+above. Cloudflare notes that Windows `cloudflared` installations do not
+automatically update.
+
+**macOS**
+
+```zsh
+brew install cloudflared
+cloudflared --version
+```
+
+Cloudflare documents Homebrew as the standard macOS installation path.
+
+### Minimal manual Quick Tunnel test
+
+If a local web server is already listening on port `8080`, the Cloudflare
+documentation's minimal test is:
+
+```text
+cloudflared tunnel --url http://localhost:8080
+```
+
+`cloudflared` prints a temporary public `https://<random>.trycloudflare.com`
+URL. Quick Tunnel is intended for testing and development; Cloudflare currently
+limits it to 200 in-flight requests and does not support Server-Sent Events
+(SSE). Quick Tunnel URLs are public unless the origin application adds its own
+authentication layer.
+
+---
+
+## Authenticated Sharing Evaluation
+
+The current Quick Tunnel workflow remains intentionally short-lived and
+**unauthenticated**. A shared static password is not a native TryCloudflare
+Quick Tunnel feature, so password-protected sharing should be treated as a
+separate authentication layer rather than a tunnel flag.
+
+| Mode | Cloudflare account / domain | Human authentication | Machine / agent authentication | Recommendation |
+| --- | --- | --- | --- | --- |
+| Existing Quick Tunnel | Not required | None | None | Keep as the zero-setup default for low-sensitivity, short-lived review |
+| Quick Tunnel + local password gate | Not required | Shared password handled by the local review server | HTTP auth header/cookie if implemented | Possible compatibility mode when a literal shared password is required |
+| Managed Tunnel + Cloudflare Access | Active Cloudflare domain required for a public hostname | Cloudflare account, IdP, or email One-Time PIN | Cloudflare Access service token | Recommended protected mode |
+
+For a Cloudflare-native protected workflow, use a **managed Tunnel + Cloudflare
+Access** in front of a self-hosted application. Access evaluates every request
+before forwarding it to the origin and supports identity-provider login and
+email One-Time PIN. Automated reviewers can use Access **service tokens**
+(`CF-Access-Client-Id` and `CF-Access-Client-Secret`) instead of an interactive
+login.
+
+Official references:
+
+- [Publish a self-hosted application with Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+- [One-Time PIN login](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/one-time-pin/)
+- [Service tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
+- [Authenticate coding agents](https://developers.cloudflare.com/cloudflare-one/access-controls/authenticate-agents/)
+
+**Implementation recommendation:** retain Quick Tunnel as the default and add a
+future explicit authentication mode, for example `Quick`, `Password`, or
+`Access`. `Password` should be enforced by the local safe server without
+putting the password in command-line arguments, logs, JSON events, or the public
+URL. `Access` should use a named/managed tunnel and Cloudflare Access policies;
+service-token secrets should likewise remain outside project output and staged
+review content.
 
 ---
 
