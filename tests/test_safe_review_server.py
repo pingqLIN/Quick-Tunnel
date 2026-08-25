@@ -70,11 +70,10 @@ class SafeReviewServerTests(unittest.TestCase):
         windows_extensions = set(re.findall(r"'([^']+)'", match.group(1)))
         self.assertEqual(windows_extensions, MACOS_MODULE.TEXT_FILE_EXTENSIONS)
 
-    def test_scan_extensions_are_always_served_as_inert_text(self) -> None:
-        self.assertTrue(
-            MACOS_MODULE.TEXT_FILE_EXTENSIONS.issubset(
-                SERVER_MODULE.TEXT_EXTENSIONS
-            )
+    def test_text_extensions_served_to_reviewers_are_all_secret_scanned(self) -> None:
+        self.assertEqual(
+            MACOS_MODULE.TEXT_FILE_EXTENSIONS,
+            SERVER_MODULE.TEXT_EXTENSIONS,
         )
 
     def test_mime_headers_and_path_confinement(self) -> None:
@@ -85,7 +84,15 @@ class SafeReviewServerTests(unittest.TestCase):
             outside = base / "outside.txt"
             outside.write_text("outside", encoding="utf-8")
             (root / "__index__.html").write_text("index", encoding="utf-8")
-            for name in ("source.cmd", "source.html", "source.svg", "source.js"):
+            (root / "index.html").write_text("fallback index", encoding="utf-8")
+            (root / "nested").mkdir()
+            for name in (
+                "source.cmd",
+                "source.html",
+                "source.svg",
+                "source.js",
+                "index.html",
+            ):
                 (root / name).write_text("inert", encoding="utf-8")
             (root / "unknown.bin").write_bytes(b"binary")
 
@@ -116,7 +123,13 @@ class SafeReviewServerTests(unittest.TestCase):
                     )
                     self.assertEqual(response.headers["Referrer-Policy"], "no-referrer")
 
-                for name in ("source.cmd", "source.html", "source.svg", "source.js"):
+                for name in (
+                    "source.cmd",
+                    "source.html",
+                    "source.svg",
+                    "source.js",
+                    "index.html",
+                ):
                     with urlopen(f"{base_url}/{name}", timeout=5) as response:
                         self.assertEqual(
                             response.headers.get_content_type(),
@@ -128,6 +141,12 @@ class SafeReviewServerTests(unittest.TestCase):
                         response.headers.get_content_type(),
                         "application/octet-stream",
                     )
+
+                for directory_url in ("/", "/nested", "/nested/"):
+                    with self.assertRaises(HTTPError) as error:
+                        urlopen(f"{base_url}{directory_url}", timeout=5)
+                    self.assertEqual(error.exception.code, 404)
+                    error.exception.close()
 
                 with self.assertRaises(HTTPError) as error:
                     urlopen(f"{base_url}/%2e%2e/outside.txt", timeout=5)

@@ -157,6 +157,23 @@ class InventoryTests(unittest.TestCase):
                 )
                 self.assertTrue(MODULE.contains_potential_secret(entry))
 
+    def test_secret_scan_covers_every_additional_inert_text_extension(self) -> None:
+        extensions = (".c", ".cc", ".cpp", ".csv", ".h", ".hpp", ".svg")
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            fake_secret = "ghp_" + ("D" * 36)
+
+            for extension in extensions:
+                path = root / f"credential{extension}"
+                path.write_text(fake_secret, encoding="utf-8")
+                length, content_hash = MODULE.hash_regular_file(path, path.name)
+                entry = MODULE.InventoryEntry(path, path.name, length, content_hash)
+
+                self.assertTrue(
+                    MODULE.contains_potential_secret(entry),
+                    f"Secret was not detected in {path.name}.",
+                )
+
     def test_staging_stops_if_a_source_file_changes(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
@@ -286,6 +303,28 @@ class TunnelTests(unittest.TestCase):
                 MODULE.wait_for_stop(1, allow_standard_input=False)
             )
         sleep.assert_called_once_with(60)
+
+    def test_public_verification_bypasses_ambient_proxy(self) -> None:
+        public_opener = mock.Mock()
+        public_opener.open.side_effect = MODULE.URLError("unreachable")
+
+        with mock.patch.object(
+            MODULE,
+            "build_opener",
+            return_value=public_opener,
+        ) as build_opener:
+            with mock.patch.object(MODULE.time, "sleep"):
+                self.assertIsNone(
+                    MODULE.verify_public_review_url(
+                        "https://example.trycloudflare.com/__index__.html"
+                    )
+                )
+
+        build_opener.assert_called_once()
+        proxy_handler = build_opener.call_args.args[0]
+        self.assertIsInstance(proxy_handler, MODULE.ProxyHandler)
+        self.assertEqual(proxy_handler.proxies, {})
+        self.assertEqual(public_opener.open.call_count, 8)
 
     def test_public_json_event_contract(self) -> None:
         output = io.StringIO()
@@ -489,7 +528,7 @@ class IntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             source_root = Path(temporary_directory)
             fake_secret = "ghp_" + ("A" * 36)
-            (source_root / "credential.txt").write_text(
+            (source_root / "credential.csv").write_text(
                 fake_secret,
                 encoding="utf-8",
             )
@@ -512,7 +551,7 @@ class IntegrationTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 1)
-            self.assertIn("credential.txt", result.stderr)
+            self.assertIn("credential.csv", result.stderr)
             self.assertNotIn(fake_secret, result.stdout + result.stderr)
             self.assertNotIn("Local read-only server verified:", result.stdout)
 

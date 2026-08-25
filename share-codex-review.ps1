@@ -76,8 +76,9 @@ $textFileExtensions = @(
     '.ps1', '.psm1', '.psd1', '.py', '.js', '.mjs', '.cjs', '.jsx',
     '.ts', '.tsx', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini',
     '.config', '.conf', '.md', '.txt', '.html', '.htm', '.css', '.scss',
-    '.xml', '.cs', '.fs', '.vb', '.go', '.rs', '.java', '.kt', '.rb',
-    '.php', '.sh', '.bash', '.zsh', '.bat', '.cmd', '.sql', '.graphql', '.log'
+    '.xml', '.c', '.cc', '.cpp', '.csv', '.cs', '.fs', '.go', '.h', '.hpp',
+    '.java', '.kt', '.log', '.php', '.rb', '.rs', '.sh', '.bash', '.zsh',
+    '.bat', '.cmd', '.sql', '.graphql', '.svg', '.vb'
 )
 
 $secretPatterns = @(
@@ -560,7 +561,7 @@ function Wait-ForLocalServer {
         }
 
         try {
-            $response = Invoke-WebRequest -Uri $Url -Method Head -TimeoutSec 2
+            $response = Invoke-WebRequest -Uri $Url -Method Head -TimeoutSec 2 -NoProxy
             if ($response.StatusCode -eq 200) {
                 return
             }
@@ -628,7 +629,7 @@ function Test-PublicReviewUrl {
 
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
         try {
-            $response = Invoke-WebRequest -Uri $Url -TimeoutSec 10
+            $response = Invoke-WebRequest -Uri $Url -TimeoutSec 10 -NoProxy
             $contentType = [string]$response.Headers['Content-Type']
             if (
                 $response.StatusCode -eq 200 -and

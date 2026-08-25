@@ -26,7 +26,7 @@ from pathlib import Path, PurePosixPath
 from typing import BinaryIO, Iterable, Sequence
 from urllib.error import URLError
 from urllib.parse import quote
-from urllib.request import ProxyHandler, Request, build_opener, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 
 EXCLUDED_DIRECTORY_NAMES = {
@@ -106,10 +106,16 @@ TEXT_FILE_EXTENSIONS = {
     ".css",
     ".scss",
     ".xml",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".csv",
     ".cs",
     ".fs",
     ".vb",
     ".go",
+    ".h",
+    ".hpp",
     ".rs",
     ".java",
     ".kt",
@@ -123,6 +129,7 @@ TEXT_FILE_EXTENSIONS = {
     ".cmd",
     ".sql",
     ".graphql",
+    ".svg",
 }
 
 SECRET_PATTERNS = tuple(
@@ -731,9 +738,12 @@ def is_retryable_quick_tunnel_failure(log_content: str) -> bool:
 
 
 def verify_public_review_url(url: str) -> str | None:
+    # Public verification must reach the tunnel URL itself rather than an
+    # ambient proxy that could observe staged-index contents or spoof a reply.
+    public_opener = build_opener(ProxyHandler({}))
     for _ in range(8):
         try:
-            with urlopen(url, timeout=10) as response:
+            with public_opener.open(url, timeout=10) as response:
                 content_type = response.headers.get("Content-Type", "")
                 content = response.read().decode("utf-8", errors="replace")
                 if (

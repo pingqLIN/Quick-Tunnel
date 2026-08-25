@@ -137,6 +137,66 @@ try {
         }
     }
 
+    Invoke-Test 'secret scan covers every additional inert text extension' {
+        $source = Join-Path $testRoot 'inert-text-extensions'
+        New-Item -ItemType Directory -Path $source | Out-Null
+        $fakeSecret = 'ghp_' + ('D' * 36)
+
+        foreach ($extension in @('.c', '.cc', '.cpp', '.csv', '.h', '.hpp', '.svg')) {
+            $path = Join-Path $source ("credential{0}" -f $extension)
+            [System.IO.File]::WriteAllText($path, $fakeSecret)
+            $item = Get-Item -LiteralPath $path
+            $entry = [pscustomobject]@{
+                SourcePath = $path
+                RelativePath = $item.Name
+                Length = $item.Length
+            }
+            Assert-True (Test-ContainsPotentialSecret -File $entry) "Secret was not detected in $($item.Name)."
+        }
+    }
+
+    Invoke-Test 'readiness probes bypass ambient proxy configuration' {
+        $script:proxyProbeCalls = [System.Collections.Generic.List[object]]::new()
+        function script:Invoke-WebRequest {
+            param(
+                [string]$Uri,
+                [string]$Method,
+                [int]$TimeoutSec,
+                [switch]$NoProxy
+            )
+
+            $script:proxyProbeCalls.Add([pscustomobject]@{
+                Uri = $Uri
+                Method = $Method
+                TimeoutSec = $TimeoutSec
+                NoProxy = $NoProxy.IsPresent
+            })
+            return [pscustomobject]@{
+                StatusCode = 200
+                Headers = @{ 'Content-Type' = 'text/html; charset=utf-8' }
+                Content = '<meta name="codex-review-index">'
+            }
+        }
+
+        try {
+            Wait-ForLocalServer `
+                -Process (Get-Process -Id $PID) `
+                -Url 'http://127.0.0.1:9876/__index__.html'
+            $contentType = Test-PublicReviewUrl `
+                -Url 'https://example.trycloudflare.com/__index__.html'
+
+            Assert-Equal $contentType 'text/html; charset=utf-8' 'Public probe response was rejected.'
+            Assert-Equal $script:proxyProbeCalls.Count 2 'Expected one local and one public probe.'
+            Assert-True (
+                @($script:proxyProbeCalls | Where-Object { -not $_.NoProxy }).Count -eq 0
+            ) 'A readiness probe did not bypass ambient proxy configuration.'
+        }
+        finally {
+            Remove-Item -LiteralPath 'Function:Invoke-WebRequest' -ErrorAction SilentlyContinue
+            Remove-Variable -Name proxyProbeCalls -Scope Script -ErrorAction SilentlyContinue
+        }
+    }
+
     Invoke-Test 'unreadable secret-scan input fails closed' {
         $path = Join-Path $testRoot 'locked.txt'
         [System.IO.File]::WriteAllText($path, 'safe')
@@ -390,7 +450,7 @@ try {
         New-Item -ItemType Directory -Path $secretSource | Out-Null
         [System.IO.File]::WriteAllText((Join-Path $emptySource '.env'), 'excluded')
         $fakeSecret = 'ghp_' + ('B' * 36)
-        [System.IO.File]::WriteAllText((Join-Path $secretSource 'credential.txt'), $fakeSecret)
+        [System.IO.File]::WriteAllText((Join-Path $secretSource 'credential.csv'), $fakeSecret)
 
         $emptyOutput = & (Get-Command pwsh).Source -NoLogo -NoProfile -File $shareScript $emptySource -ValidateOnly -NoQrCode 2>&1 | Out-String
         $emptyExitCode = $LASTEXITCODE
@@ -400,7 +460,7 @@ try {
         Assert-Equal $emptyExitCode 1 'Empty inventory did not fail.'
         Assert-True ($emptyOutput -like '*No shareable files remain after exclusions.*') 'Empty inventory error was absent.'
         Assert-Equal $secretExitCode 1 'Secret-bearing inventory did not fail.'
-        Assert-True ($secretOutput -like '*credential.txt*') 'Secret-bearing path was not reported.'
+        Assert-True ($secretOutput -like '*credential.csv*') 'Secret-bearing path was not reported.'
         Assert-True ($secretOutput -notlike "*$fakeSecret*") 'Secret value leaked into diagnostics.'
         Assert-True ($secretOutput -notlike '*Local read-only server verified:*') 'Secret-bearing input reached the local server.'
     }

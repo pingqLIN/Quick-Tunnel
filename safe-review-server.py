@@ -93,6 +93,13 @@ class SafeReviewRequestHandler(SimpleHTTPRequestHandler):
 
         return SAFE_IMAGE_TYPES.get(extension, "application/octet-stream")
 
+    def send_head(self) -> object:
+        """Reject directory routes before the base handler can list or index them."""
+        if Path(self.translate_path(self.path)).is_dir():
+            self.send_error(404, "File not found")
+            return None
+        return super().send_head()
+
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")
         self.send_header(

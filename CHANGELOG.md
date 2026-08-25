@@ -7,6 +7,13 @@ All notable changes to this project are recorded here. Tagged releases follow
 
 ## Unreleased
 
+### Fixed
+
+- Secret scanning now covers every recognized text format served by the review
+  server, including C/C++ sources and headers, CSV, and SVG files.
+- Directory listings are disabled, and automatic verification bypasses ambient
+  proxy configuration on Windows and macOS.
+
 ## 0.1.0 - 2026-08-06
 
 ### Added

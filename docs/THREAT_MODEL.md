@@ -35,10 +35,15 @@ the process is running.
 - Files larger than the configured copy limit are excluded.
 - A content hash detects equal-length changes between inventory and staging.
 - A high-signal secret match stops the workflow before the local server starts.
+- Every recognized format served as `text/plain` is included in the secret-scan
+  extension set when it is at or below the 2 MiB scan limit.
 - The local server binds only to `127.0.0.1`; its CLI rejects non-loopback bind
   addresses.
 - HTML, SVG, JavaScript, CSS, command files, and other recognized text formats
   are served as `text/plain`; unknown files use `application/octet-stream`.
+- Directory-listing requests return `404`, preventing incidental filename
+  disclosure from the staging root.
+- Automated loopback and public URL verification bypass ambient proxy settings.
 - Responses use `no-store`, a restrictive Content Security Policy, `nosniff`,
   same-origin resource policy, and no-referrer policy.
 - Public mode requires the exact word `SHARE` unless an approved caller

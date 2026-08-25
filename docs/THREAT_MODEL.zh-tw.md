@@ -31,9 +31,13 @@ DLP（資料外洩防護）系統，也不適合傳輸高敏感度資料。
 - 超過設定複製上限的檔案會排除。
 - 內容雜湊可偵測檔案清冊與暫存之間相同長度的內容變動。
 - 高可信度機密比對成功時，會在本機伺服器啟動前中止。
+- 所有會以 `text/plain` 提供的已辨識格式，只要不超過 2 MiB 掃描上限，都會
+  納入機密掃描的副檔名集合。
 - 本機伺服器只綁定 `127.0.0.1`；其 CLI 會拒絕非回送介面的綁定地址。
 - HTML、SVG、JavaScript、CSS、命令檔與其他已辨識文字格式都會以
   `text/plain` 提供；未知格式使用 `application/octet-stream`。
+- 目錄列表請求一律回傳 `404`，避免暫存根目錄意外揭露檔名。
+- 自動驗證回送介面與公開 URL 時會略過環境中的 Proxy 設定。
 - 回應會使用 `no-store`、限制嚴格的 Content Security Policy、`nosniff`、
   同源資源政策（same-origin resource policy）與不傳送來源資訊政策（no-referrer policy）。
 - 公開模式預設要求輸入完全相符的 `SHARE`；只有已核准的呼叫端明確使用
