@@ -624,29 +624,210 @@ function Test-IsRetryableQuickTunnelFailure {
     return $isServerFailure -and $isMalformedResponse
 }
 
+function Get-CurlPublicProbeArguments {
+    param(
+        [string]$Url,
+        [switch]$BestEffortRevocation
+    )
+
+    $arguments = [System.Collections.Generic.List[string]]::new()
+    foreach ($argument in @(
+        '--silent',
+        '--show-error',
+        '--noproxy', '*',
+        '--max-time', '10'
+    )) {
+        $arguments.Add($argument)
+    }
+    if ($BestEffortRevocation) {
+        $arguments.Add('--ssl-revoke-best-effort')
+    }
+    $arguments.Add('--write-out')
+    $arguments.Add("`n__QUICK_TUNNEL_HTTP_STATUS__:%{http_code}`n__QUICK_TUNNEL_CONTENT_TYPE__:%{content_type}")
+    $arguments.Add($Url)
+
+    return $arguments.ToArray()
+}
+
+function Invoke-CurlPublicProbe {
+    param(
+        [string]$Url,
+        [switch]$BestEffortRevocation
+    )
+
+    $curlCommand = Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -eq $curlCommand) {
+        return [pscustomobject]@{
+            ExitCode    = 127
+            HttpStatus  = 0
+            ContentType = ''
+            Content     = ''
+            Diagnostic  = 'curl.exe was not found.'
+        }
+    }
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $curlCommand.Source
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in (Get-CurlPublicProbeArguments `
+        -Url $Url `
+        -BestEffortRevocation:$BestEffortRevocation)) {
+        $startInfo.ArgumentList.Add($argument)
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    try {
+        [void]$process.Start()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(15000)) {
+            $process.Kill($true)
+            $process.WaitForExit()
+            [void]$stdoutTask.GetAwaiter().GetResult()
+            $stderr = $stderrTask.GetAwaiter().GetResult().Trim()
+            return [pscustomobject]@{
+                ExitCode    = -1
+                HttpStatus  = 0
+                ContentType = ''
+                Content     = ''
+                Diagnostic  = $(if ($stderr) { $stderr } else { 'curl.exe timed out.' })
+            }
+        }
+
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult().Trim()
+        $metadataMatch = [regex]::Match(
+            $stdout,
+            '(?ms)\r?\n__QUICK_TUNNEL_HTTP_STATUS__:(?<status>\d{3})\r?\n__QUICK_TUNNEL_CONTENT_TYPE__:(?<contentType>[^\r\n]*)\s*$'
+        )
+        $httpStatus = 0
+        $contentType = ''
+        $content = $stdout
+        if ($metadataMatch.Success) {
+            $httpStatus = [int]$metadataMatch.Groups['status'].Value
+            $contentType = $metadataMatch.Groups['contentType'].Value.Trim()
+            $content = $stdout.Substring(0, $metadataMatch.Index)
+        }
+
+        return [pscustomobject]@{
+            ExitCode    = $process.ExitCode
+            HttpStatus  = $httpStatus
+            ContentType = $contentType
+            Content     = $content
+            Diagnostic  = $stderr
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            ExitCode    = -1
+            HttpStatus  = 0
+            ContentType = ''
+            Content     = ''
+            Diagnostic  = $_.Exception.Message
+        }
+    }
+    finally {
+        $process.Dispose()
+    }
+}
+
+function Test-IsHealthyPublicProbe {
+    param([object]$Probe)
+
+    return (
+        $Probe.ExitCode -eq 0 -and
+        $Probe.HttpStatus -ge 200 -and
+        $Probe.HttpStatus -lt 300 -and
+        ([string]$Probe.ContentType).StartsWith('text/html', [System.StringComparison]::OrdinalIgnoreCase) -and
+        $Probe.Content -match 'name="codex-review-index"'
+    )
+}
+
+function Test-IsSchannelRevocationCheckFailure {
+    param([object]$Probe)
+
+    return (
+        $Probe.ExitCode -ne 0 -and
+        [string]$Probe.Diagnostic -match '(?i)CRYPT_E_NO_REVOCATION_CHECK|0x80092012'
+    )
+}
+
+function New-PublicReviewHealthResult {
+    param(
+        [bool]$IsHealthy,
+        [string]$TlsValidation,
+        [object]$NormalProbe,
+        [AllowNull()]
+        [object]$FallbackProbe,
+        [AllowNull()]
+        [string]$OriginalDiagnostic
+    )
+
+    $effectiveProbe = if ($null -ne $FallbackProbe) { $FallbackProbe } else { $NormalProbe }
+    return [pscustomobject]@{
+        IsHealthy          = $IsHealthy
+        PublicEndpoint     = $(if ($IsHealthy) { 'HEALTHY' } else { 'UNHEALTHY' })
+        TlsValidation      = $TlsValidation
+        HttpStatus         = $effectiveProbe.HttpStatus
+        ContentType        = $effectiveProbe.ContentType
+        NormalProbe        = $NormalProbe
+        FallbackProbe      = $FallbackProbe
+        OriginalDiagnostic = $OriginalDiagnostic
+    }
+}
+
 function Test-PublicReviewUrl {
     param([string]$Url)
 
+    $lastNormalProbe = $null
+    $lastFallbackProbe = $null
+    $originalDiagnostic = $null
     for ($attempt = 0; $attempt -lt 8; $attempt++) {
-        try {
-            $response = Invoke-WebRequest -Uri $Url -TimeoutSec 10 -NoProxy
-            $contentType = [string]$response.Headers['Content-Type']
-            if (
-                $response.StatusCode -eq 200 -and
-                $contentType.StartsWith('text/html', [System.StringComparison]::OrdinalIgnoreCase) -and
-                $response.Content -match 'name="codex-review-index"'
-            ) {
-                return $contentType
+        $lastFallbackProbe = $null
+        $lastNormalProbe = Invoke-CurlPublicProbe -Url $Url
+        if (Test-IsHealthyPublicProbe -Probe $lastNormalProbe) {
+            return New-PublicReviewHealthResult `
+                -IsHealthy $true `
+                -TlsValidation 'PASS' `
+                -NormalProbe $lastNormalProbe `
+                -FallbackProbe $null `
+                -OriginalDiagnostic $null
+        }
+
+        if (Test-IsSchannelRevocationCheckFailure -Probe $lastNormalProbe) {
+            if ($null -eq $originalDiagnostic) {
+                $originalDiagnostic = [string]$lastNormalProbe.Diagnostic
+            }
+            $lastFallbackProbe = Invoke-CurlPublicProbe `
+                -Url $Url `
+                -BestEffortRevocation
+            if (Test-IsHealthyPublicProbe -Probe $lastFallbackProbe) {
+                return New-PublicReviewHealthResult `
+                    -IsHealthy $true `
+                    -TlsValidation 'PASS_WITH_REVOCATION_BEST_EFFORT' `
+                    -NormalProbe $lastNormalProbe `
+                    -FallbackProbe $lastFallbackProbe `
+                    -OriginalDiagnostic $originalDiagnostic
             }
         }
-        catch {
-            # A new Quick Tunnel can need a few seconds before edge requests succeed.
-        }
 
-        Start-Sleep -Seconds 2
+        if ($attempt -lt 7) {
+            # A new Quick Tunnel can need a few seconds before edge requests succeed.
+            Start-Sleep -Seconds 2
+        }
     }
 
-    return $null
+    return New-PublicReviewHealthResult `
+        -IsHealthy $false `
+        -TlsValidation 'FAIL' `
+        -NormalProbe $lastNormalProbe `
+        -FallbackProbe $lastFallbackProbe `
+        -OriginalDiagnostic $originalDiagnostic
 }
 
 function Stop-ChildProcess {
@@ -906,15 +1087,19 @@ try {
     $publicReviewUrl = "$publicBaseUrl/$indexFileName"
     $sharingStarted = $true
 
-    $publicContentType = Test-PublicReviewUrl -Url $publicReviewUrl
+    $publicHealth = Test-PublicReviewUrl -Url $publicReviewUrl
     Write-HumanOutput ''
     Write-HumanOutput 'Share URL:' -ForegroundColor Cyan
     Write-HumanOutput $publicReviewUrl -ForegroundColor Green
-    if ($null -ne $publicContentType) {
-        Write-HumanOutput "Public verification: HTTP 200, $publicContentType" -ForegroundColor Green
+    if ($publicHealth.IsHealthy) {
+        Write-HumanOutput "Public verification: HTTP $($publicHealth.HttpStatus), $($publicHealth.ContentType); TLS validation: $($publicHealth.TlsValidation)" -ForegroundColor Green
+        if ($publicHealth.TlsValidation -eq 'PASS_WITH_REVOCATION_BEST_EFFORT') {
+            $singleLineDiagnostic = ([string]$publicHealth.OriginalDiagnostic -replace '\r?\n', ' | ').Trim()
+            Write-HumanWarning "Normal Windows TLS validation reported a Schannel revocation-check limitation. Public verification required curl --ssl-revoke-best-effort. Original diagnostic: $singleLineDiagnostic"
+        }
     }
     else {
-        Write-HumanWarning 'The tunnel URL was created, but public HTTP verification did not succeed yet.'
+        Write-HumanWarning 'The tunnel URL was created, but public HTTP verification did not succeed yet. Public endpoint: UNHEALTHY; TLS validation: FAIL.'
     }
     Write-HumanOutput "Server PID: $($serverProcess.Id) | Tunnel PID: $($tunnelProcess.Id)"
 

@@ -157,6 +157,8 @@ try {
 
     Invoke-Test 'readiness probes bypass ambient proxy configuration' {
         $script:proxyProbeCalls = [System.Collections.Generic.List[object]]::new()
+        $script:curlProbeCalls = [System.Collections.Generic.List[object]]::new()
+        $productionCurlProbe = (Get-Item -LiteralPath 'Function:Invoke-CurlPublicProbe').ScriptBlock
         function script:Invoke-WebRequest {
             param(
                 [string]$Uri,
@@ -177,23 +179,168 @@ try {
                 Content = '<meta name="codex-review-index">'
             }
         }
+        function script:Invoke-CurlPublicProbe {
+            param(
+                [string]$Url,
+                [switch]$BestEffortRevocation
+            )
+
+            $script:curlProbeCalls.Add([pscustomobject]@{
+                Url = $Url
+                BestEffortRevocation = $BestEffortRevocation.IsPresent
+            })
+            return [pscustomobject]@{
+                ExitCode = 0
+                HttpStatus = 200
+                ContentType = 'text/html; charset=utf-8'
+                Content = '<meta name="codex-review-index">'
+                Diagnostic = ''
+            }
+        }
 
         try {
             Wait-ForLocalServer `
                 -Process (Get-Process -Id $PID) `
                 -Url 'http://127.0.0.1:9876/__index__.html'
-            $contentType = Test-PublicReviewUrl `
+            $health = Test-PublicReviewUrl `
                 -Url 'https://example.trycloudflare.com/__index__.html'
+            $normalArguments = @(Get-CurlPublicProbeArguments `
+                -Url 'https://example.trycloudflare.com/__index__.html')
+            $fallbackArguments = @(Get-CurlPublicProbeArguments `
+                -Url 'https://example.trycloudflare.com/__index__.html' `
+                -BestEffortRevocation)
 
-            Assert-Equal $contentType 'text/html; charset=utf-8' 'Public probe response was rejected.'
-            Assert-Equal $script:proxyProbeCalls.Count 2 'Expected one local and one public probe.'
+            Assert-True $health.IsHealthy 'Public probe response was rejected.'
+            Assert-Equal $health.ContentType 'text/html; charset=utf-8' 'Public content type differed.'
+            Assert-Equal $script:proxyProbeCalls.Count 1 'Expected one local Invoke-WebRequest probe.'
+            Assert-Equal $script:curlProbeCalls.Count 1 'Expected one public curl probe.'
             Assert-True (
                 @($script:proxyProbeCalls | Where-Object { -not $_.NoProxy }).Count -eq 0
-            ) 'A readiness probe did not bypass ambient proxy configuration.'
+            ) 'The local readiness probe did not bypass ambient proxy configuration.'
+            $noProxyIndex = [array]::IndexOf($normalArguments, '--noproxy')
+            Assert-True ($noProxyIndex -ge 0) 'The public probe omitted --noproxy.'
+            Assert-Equal $normalArguments[$noProxyIndex + 1] '*' 'The public probe did not bypass every ambient proxy.'
+            Assert-True ($normalArguments -notcontains '--ssl-revoke-best-effort') 'Normal validation weakened revocation behavior.'
+            Assert-True ($fallbackArguments -contains '--ssl-revoke-best-effort') 'Bounded fallback argument was absent.'
+            Assert-True ($fallbackArguments -notcontains '--ssl-no-revoke') 'Unsafe --ssl-no-revoke argument was present.'
         }
         finally {
             Remove-Item -LiteralPath 'Function:Invoke-WebRequest' -ErrorAction SilentlyContinue
+            Set-Item -LiteralPath 'Function:Invoke-CurlPublicProbe' -Value $productionCurlProbe
             Remove-Variable -Name proxyProbeCalls -Scope Script -ErrorAction SilentlyContinue
+            Remove-Variable -Name curlProbeCalls -Scope Script -ErrorAction SilentlyContinue
+        }
+    }
+
+    Invoke-Test 'public health classifies normal success and unrelated failure without fallback' {
+        $script:publicProbeCalls = [System.Collections.Generic.List[object]]::new()
+        $script:publicProbeMode = 'normal-success'
+        $productionCurlProbe = (Get-Item -LiteralPath 'Function:Invoke-CurlPublicProbe').ScriptBlock
+        function script:Invoke-CurlPublicProbe {
+            param(
+                [string]$Url,
+                [switch]$BestEffortRevocation
+            )
+
+            $script:publicProbeCalls.Add([pscustomobject]@{
+                Url = $Url
+                BestEffortRevocation = $BestEffortRevocation.IsPresent
+            })
+            if ($script:publicProbeMode -eq 'normal-success') {
+                return [pscustomobject]@{
+                    ExitCode = 0
+                    HttpStatus = 200
+                    ContentType = 'text/html; charset=utf-8'
+                    Content = '<meta name="codex-review-index">'
+                    Diagnostic = ''
+                }
+            }
+            return [pscustomobject]@{
+                ExitCode = 6
+                HttpStatus = 0
+                ContentType = ''
+                Content = ''
+                Diagnostic = 'curl: (6) Could not resolve host'
+            }
+        }
+        function script:Start-Sleep {}
+
+        try {
+            $normalHealth = Test-PublicReviewUrl `
+                -Url 'https://example.trycloudflare.com/__index__.html'
+            Assert-True $normalHealth.IsHealthy 'Normal HTTP 200 was not classified healthy.'
+            Assert-Equal $normalHealth.TlsValidation 'PASS' 'Normal TLS classification differed.'
+            Assert-Equal $script:publicProbeCalls.Count 1 'Normal success performed extra probes.'
+
+            $script:publicProbeCalls.Clear()
+            $script:publicProbeMode = 'unrelated-failure'
+            $failureHealth = Test-PublicReviewUrl `
+                -Url 'https://example.trycloudflare.com/__index__.html'
+            Assert-True (-not $failureHealth.IsHealthy) 'Unrelated failure was falsely classified healthy.'
+            Assert-Equal $failureHealth.TlsValidation 'FAIL' 'Unrelated failure TLS classification differed.'
+            Assert-Equal $script:publicProbeCalls.Count 8 'Unrelated failure did not use the normal bounded retry count.'
+            Assert-True (
+                @($script:publicProbeCalls | Where-Object { $_.BestEffortRevocation }).Count -eq 0
+            ) 'Unrelated failure incorrectly used revocation fallback.'
+        }
+        finally {
+            Set-Item -LiteralPath 'Function:Invoke-CurlPublicProbe' -Value $productionCurlProbe
+            Remove-Item -LiteralPath 'Function:Start-Sleep' -ErrorAction SilentlyContinue
+            Remove-Variable -Name publicProbeCalls -Scope Script -ErrorAction SilentlyContinue
+            Remove-Variable -Name publicProbeMode -Scope Script -ErrorAction SilentlyContinue
+        }
+    }
+
+    Invoke-Test 'Schannel revocation-check failure uses the bounded best-effort fallback' {
+        $script:publicProbeCalls = [System.Collections.Generic.List[object]]::new()
+        $productionCurlProbe = (Get-Item -LiteralPath 'Function:Invoke-CurlPublicProbe').ScriptBlock
+        function script:Invoke-CurlPublicProbe {
+            param(
+                [string]$Url,
+                [switch]$BestEffortRevocation
+            )
+
+            $script:publicProbeCalls.Add([pscustomobject]@{
+                Url = $Url
+                BestEffortRevocation = $BestEffortRevocation.IsPresent
+            })
+            if (-not $BestEffortRevocation) {
+                return [pscustomobject]@{
+                    ExitCode = 35
+                    HttpStatus = 0
+                    ContentType = ''
+                    Content = ''
+                    Diagnostic = 'curl: (35) schannel: CRYPT_E_NO_REVOCATION_CHECK (0x80092012)'
+                }
+            }
+
+            return [pscustomobject]@{
+                ExitCode = 0
+                HttpStatus = 200
+                ContentType = 'text/html; charset=utf-8'
+                Content = '<meta name="codex-review-index">'
+                Diagnostic = ''
+            }
+        }
+        function script:Start-Sleep {}
+
+        try {
+            $health = Test-PublicReviewUrl `
+                -Url 'https://example.trycloudflare.com/__index__.html'
+
+            Assert-True $health.IsHealthy 'Best-effort fallback did not recover endpoint health.'
+            Assert-Equal $health.TlsValidation 'PASS_WITH_REVOCATION_BEST_EFFORT' 'TLS classification differed.'
+            Assert-Equal $script:publicProbeCalls.Count 2 'Expected one normal probe and one bounded fallback.'
+            Assert-True (-not $script:publicProbeCalls[0].BestEffortRevocation) 'Normal validation was not attempted first.'
+            Assert-True $script:publicProbeCalls[1].BestEffortRevocation 'Fallback did not use best-effort revocation.'
+            Assert-True (
+                $health.OriginalDiagnostic -like '*CRYPT_E_NO_REVOCATION_CHECK*'
+            ) 'Original Schannel diagnostic was not preserved.'
+        }
+        finally {
+            Set-Item -LiteralPath 'Function:Invoke-CurlPublicProbe' -Value $productionCurlProbe
+            Remove-Item -LiteralPath 'Function:Start-Sleep' -ErrorAction SilentlyContinue
+            Remove-Variable -Name publicProbeCalls -Scope Script -ErrorAction SilentlyContinue
         }
     }
 
